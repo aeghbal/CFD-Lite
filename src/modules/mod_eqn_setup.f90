@@ -51,7 +51,7 @@ module mod_eqn_setup
     integer :: i,s
 
     nullify(bc)
-    do i=1,geom%mg%nintf_c2b
+    do i=1,geom%mg%nintf
       s=geom%mg%intf2sec(i)
       if(index(trim(secName),trim(geom%mg%sectionName(s)))>0) then
         bc=>eqn%bcs(i)

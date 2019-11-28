@@ -6,30 +6,29 @@ module mod_physics
   use mod_energy
   use mod_multiphase
   use mod_uvwp
-  use mod_subdomains
+  use mod_vfr
+  use mod_mfr
+  use mod_ndf
   implicit none
   ! Physics
-
   type :: phys_t
     ! temporal properties
     real :: dt=0.01
-    integer :: ntstep=10
+    integer :: ntstep=100
     integer :: ncoef=3
     integer :: nit=100
-    integer :: n_subdomains=4
     !
-    integer :: nintf_c2b
+    integer :: nintf
     ! put equations to be solve here
     type(scalar_t), pointer :: scalar => NULL()
     type(uvwp_t), pointer :: uvwp => NULL()
     type(energy_t), pointer :: energy => null()
     ! multiphase solution
     integer :: iphase
-    type (phase_t) :: phase(NPHASES)
+    type(phase_t) :: phase(NPHASES)
+    type(interaction_array_t) :: interaction(NPHASES,NPHASES)
     ! segregated solver coefficients
     real, allocatable, dimension(:) :: ap,anb,b,phic
-    type(subdomain_t), allocatable :: subdomain(:)
-    type(intf_t) , allocatable :: intf(:,:)
     ! homogeneous level properties
     type(properties_t) :: prop
   end type
@@ -41,7 +40,7 @@ module mod_physics
     type(geometry_t) :: geom
     integer :: i
 
-    do i=1,phys%nintf_c2b
+    do i=1,phys%nintf
       !call phys%scalar%bcs(i)%coef(geom,phys%scalar)
       call phys%uvwp%bcs(i)%coef(geom,phys%uvwp,phys%prop)
       call phys%energy%bcs(i)%coef(geom,phys%energy,phys%prop)
@@ -51,9 +50,9 @@ module mod_physics
 
   subroutine construct_physics(phys,geom)
     implicit none
-    type(phys_t) :: phys
+    type(phys_t), target :: phys
     type(geometry_t) :: geom
-    integer :: length
+    integer :: length,phase,phase2,i
 
     allocate(phys%ap(geom%ne));phys%ap=0.
     allocate(phys%b(geom%ne));phys%b=0.
@@ -61,40 +60,51 @@ module mod_physics
     allocate(phys%anb(length));phys%anb=0.
     length = geom%ne+geom%nbf
     allocate(phys%phic(length));phys%phic=0.
-    phys%nintf_c2b=geom%mg%nintf_c2b
-! construct subdomains
-    if(phys%n_subdomains>1) call construct_subdomains(phys%subdomain,phys%n_subdomains,phys%intf,geom)
+    phys%nintf=geom%mg%nintf
 
 ! initialize properties
     call init_properties(phys%prop,0,geom%ne)
 ! construct equations
-    phys%uvwp => construct_uvwp(geom,phys%prop,phys%dt)
+    do phase=1,NPHASES
+      phys%phase(phase)%COMPONENT_SET=.false.
 
-    phys%energy => construct_energy(geom,phys%uvwp%mip,phys%prop)
+      phys%phase(phase)%vfr => construct_vfr(geom,phys%phase(phase)%uvwp%mip,phys%prop)
 
+      phys%phase(phase)%uvwp => construct_uvwp(geom,phys%prop,phys%dt,phys%phase(phase)%vfr%phi,phys%phase(phase)%vfr%phi0)
+
+      phys%phase(phase)%energy => construct_energy(geom,phys%phase(phase)%uvwp%mip,phys%prop,phys%phase(phase)%vfr%phi,phys%phase(phase)%vfr%phi0)
+    enddo
+
+    phys%phase(LIQUID)%ndf => construct_ndf(geom,phys%phase(phase)%uvwp%mip,phys%prop,phys%phase(phase)%vfr%phi,phys%phase(phase)%vfr%phi0)
+    ! construct source terms for interaction between phases
+    do phase=1,NPHASES
+      do phase2=phase+1,NPHASES
+        phys%interaction(phase,phase2)%donor_phase=>phys%phase(phase)
+        phys%interaction(phase,phase2)%receiver_phase=>phys%phase(phase2)
+        phys%interaction(phase2,phase)%donor_phase=>phys%phase(phase2)
+        phys%interaction(phase2,phase)%receiver_phase=>phys%phase(phase)
+        do i=1,N_INTERACTIONS
+          ! receiver-donor
+          phys%interaction(phase,phase2)%scheme(i)%sgn=1.0
+          allocate(phys%interaction(phase,phase2)%scheme(i)%src(geom%ne));phys%interaction(phase,phase2)%scheme(i)%src=0.
+          allocate(phys%interaction(phase,phase2)%scheme(i)%sdc(geom%ne));phys%interaction(phase,phase2)%scheme(i)%sdc=0.
+          ! donor-receiver points to above arrays with negative sign
+          phys%interaction(phase2,phase)%scheme(i)%sgn=-1.0
+          phys%interaction(phase2,phase)%scheme(i)%src=>phys%interaction(phase,phase2)%scheme(i)%src
+          phys%interaction(phase2,phase)%scheme(i)%sdc=>phys%interaction(phase,phase2)%scheme(i)%sdc
+        end do
+      end do
+    end do
+    ! set phase component set
+    phys%phase(GAS)%COMPONENT_SET(WAT_VAP)=.true.
+    phys%phase(LIQUID)%COMPONENT_SET(WAT_LIQ)=.true.
+!
   end subroutine
 
   subroutine destroy_phys(phys)
     type(phys_t) :: phys
-    integer :: c,cnb
 
     deallocate(phys%anb,phys%ap,phys%b,phys%phic)
-    if(phys%n_subdomains>1) then
-      do c=1,phys%n_subdomains
-        deallocate(phys%subdomain(c)%ap)
-        deallocate(phys%subdomain(c)%b)
-        deallocate(phys%subdomain(c)%anb)
-        deallocate(phys%subdomain(c)%phic)
-        deallocate(phys%subdomain(c)%ef2nb)
-        deallocate(phys%subdomain(c)%ef2nb_idx)
-        do cnb=1,phys%n_subdomains
-          deallocate(phys%intf(c,cnb)%index1)
-        end do
-      end do
-      deallocate(phys%subdomain)
-      deallocate(Phys%intf)
-    end if
-
 
   end subroutine
 

@@ -11,7 +11,7 @@ module mod_energy
 
 contains
 ! init energy field
-  function construct_energy(geom,mip,prop) result(eqn)
+  function construct_energy(geom,mip,prop,vfr,vfr0) result(eqn)
     implicit none
     type(energy_t), pointer :: eqn
     type(properties_t) :: prop
@@ -19,6 +19,7 @@ contains
     type(geometry_t) :: geom
     integer :: ne,nbf,length
     type(bc_t), pointer :: bcp
+    real, pointer, dimension(:) :: vfr,vfr0
 
     allocate(eqn)
     length = geom%ne+geom%nbf
@@ -36,7 +37,7 @@ contains
     eqn%grad=0.
     eqn%gt=0.
 ! set BC for energy
-    allocate(eqn%bcs(geom%mg%nintf_c2b))
+    allocate(eqn%bcs(geom%mg%nintf))
 ! set BC for energy
     bcp=>eqn%make_bc(geom,'top');bcp%coef=>lid
     bcp=>eqn%make_bc(geom,'west');bcp%coef=>dirichlet0
@@ -53,29 +54,6 @@ contains
 
     deallocate(eqn%bcs,eqn%grad,eqn%phi0,eqn%phi,eqn%t,eqn%gt)
     deallocate(eqn)
-
-  end subroutine
-
-    subroutine solve_energy(eqn,prop,geom,dt,nit,ap,anb,b,phic)
-    use mod_properties
-    use mod_solver
-    implicit none
-
-    type(energy_t) :: eqn
-    type(properties_t) :: prop
-    type(geometry_t) :: geom
-    real :: dt
-    real, dimension(*) :: ap,anb,b,phic
-    integer :: nit
-
-    call calc_grad(eqn%t,eqn%gt,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
-    call calc_grad(eqn%phi,eqn%grad,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
-
-    call calc_coef_energy(eqn,ap,anb,b,geom,prop,dt)
-
-    call solve_gs('e',eqn%phi,ap,anb,b,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
-
-    call calc_temperature(eqn%t,eqn%phi,prop%cp,geom%ne)
 
   end subroutine
 ! make coef for energy

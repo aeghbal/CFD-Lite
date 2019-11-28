@@ -137,8 +137,8 @@ module mod_vtu_output
         allocate (varname(nvarlist))
         allocate (vardimension(nvarlist))
         allocate(vtkarraytype(nvarlist))
-        phi(1)%p=>eqn%phi;varname(1)='phi';vardimension(1)=1
-        phi(2)%p=>eqn%grad;varname(2)='grad';vardimension(2)=3
+        phi(1)%p=>eqn%phi;varname(1)=eqn%name;vardimension(1)=1
+        phi(2)%p=>eqn%grad;varname(2)='grad'//trim(eqn%name);vardimension(2)=3
     end select
     vtkarraytype(1:nvarlist)='Float64'
 

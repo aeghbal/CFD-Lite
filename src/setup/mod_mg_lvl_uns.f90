@@ -10,7 +10,7 @@ module mod_mg_lvl
     integer , parameter , private :: nEigenIt = 3
     public :: mg_lvl_t
     type mg_lvl_t
-        integer :: cell_no=1,nintf_c2b
+        integer :: cell_no=1,nintf
         character(len=32) :: cellname
         character(len=32), allocatable, dimension(:) :: sectionName
         !private
@@ -174,7 +174,7 @@ module mod_mg_lvl
                     this%sec2intf(s)=n
                   end if
                 end do
-                this%nintf_c2b=n
+                this%nintf=n
                 allocate(this%intf2sec(n))
                 do s=1,nsec
                   n=this%sec2intf(s)

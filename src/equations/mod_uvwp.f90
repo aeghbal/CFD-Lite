@@ -17,7 +17,7 @@ module mod_uvwp
 
 contains
 ! init uvwp field
-  function construct_uvwp(geom,prop,dt) result(eqn)
+  function construct_uvwp(geom,prop,dt,vfr,vfr0) result(eqn)
     use mod_properties
     implicit none
     type(uvwp_t), pointer :: eqn
@@ -26,6 +26,7 @@ contains
     integer :: ne,nbf,length
     type(bc_t), pointer :: bcp
     real :: dt
+    real, pointer, dimension(:) :: vfr,vfr0
 
     allocate(eqn)
     length = geom%ne+geom%nbf
@@ -68,7 +69,7 @@ contains
     eqn%gw=0.
     eqn%mip=0.
 
-    allocate(eqn%bcs(geom%mg%nintf_c2b))
+    allocate(eqn%bcs(geom%mg%nintf))
 ! set BC for uvwp
     bcp=>eqn%make_bc(geom,'top');bcp%coef=>lid
     bcp=>eqn%make_bc(geom,'west');bcp%coef=>dirichlet0
@@ -92,44 +93,41 @@ contains
 
   end subroutine
 
-  subroutine solve_uvwp(eqn,prop,geom,dt,nit,ap,anb,b,phic,subdomain,intf,nsubd)
-    use mod_properties
-    use mod_solver
+  subroutine calc_uvw_alg (eqn,geom,prop,dt,vfr,ndf,u_bg,v_bg,w_bg,rho_bg)
+    use mod_util
     implicit none
-
-    type(uvwp_t) :: eqn
     type(properties_t) :: prop
+    type(uvwp_t) :: eqn
     type(geometry_t) :: geom
-    real :: dt,pref
-    real, dimension(*) :: ap,anb,b,phic
-    integer :: nit,nsubd
-    type(subdomain_t) :: subdomain(nsubd)
-    type(intf_t) :: intf(nsubd,nsubd)
+!
+    integer :: e
+    Real, dimension(geom%ne) :: rho_bg
+    Real, dimension(geom%ne+geom%nbf) :: u_bg,v_bg,w_bg,vfr,ndf
+    real :: tauD,gravity(3),ReD,dt,dv(3),tmp,diam
 
-!    call calc_grad(eqn%p,eqn%gp,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
+    gravity =[0.,0.,-9.8]
 
-    call calc_coef_uvw(eqn,ap,anb,geom,prop,dt)
+    do e = 1,geom%ne
+! Magnitude relative velocity
+      dv=[eqn%u(e)-u_bg(e),eqn%v(e)-v_bg(e),eqn%w(e)-w_bg(e)]
+      tmp = sqrt(sum(dv**2))
+      diam = (6./3.14*vfr(e)/ndf(e))*(1./3.)
+! Droplet Reynolds number
+      ReD = (rho_bg(e)*diam*tmp)/prop%mu(e)
+! Time constant
+      tauD = prop%rho(e)*diam**2.0/18.0/prop%mu(e)/(1+0.15*ReD**0.687)
 
-    !call set_a_0(eqn%u,geom%ne);call set_a_0(eqn%v,geom%ne);call set_a_0(eqn%w,geom%ne)
-    call solve_gs('u',eqn%u,ap,anb,eqn%bu,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
-    call solve_gs('v',eqn%v,ap,anb,eqn%bv,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
-    call solve_gs('w',eqn%w,ap,anb,eqn%bw,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
+! Relative velocity components
+      eqn%u(e) = u_bg(e)+tauD*gravity(1) - tauD* ( (eqn%u(e)-eqn%u0(e))/dt + &
+                    eqn%u(e)*eqn%gu(3*e-2)+eqn%v(e)*eqn%gu(3*e-1)+eqn%w(e)*eqn%gu(3*e))
 
-    call calc_grad(eqn%u,eqn%gu,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
-    call calc_grad(eqn%v,eqn%gv,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
-    call calc_grad(eqn%w,eqn%gw,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
-   ! Rhie Chow
-    call calc_mip(eqn,prop,geom,.true.,dt)
+      eqn%v(e) = v_bg(e)+tauD*gravity(2) - tauD* ( (eqn%v(e)-eqn%v0(e))/dt + &
+                    eqn%u(e)*eqn%gv(3*e-2)+eqn%v(e)*eqn%gv(3*e-1)+eqn%w(e)*eqn%gv(3*e))
 
-    call calc_coef_p(eqn,ap,anb,b,geom,prop)
+      eqn%w(e) = w_bg(e)+tauD*gravity(3) - tauD* ( (eqn%w(e)-eqn%w0(e))/dt + &
+                    eqn%u(e)*eqn%gw(3*e-2)+eqn%v(e)*eqn%gw(3*e-1)+eqn%w(e)*eqn%gw(3*e))
 
-    call set_a_0(phic,geom%ne+geom%nbf)
-    call solve('pc',subdomain,intf,geom,ap,anb,b,phic,nsubd,nit)
-
-    pref=phic(1)! if closed system
-    call adjust_pc(phic,pref,geom)
-    call calc_grad(phic,eqn%gpc,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
-    call update_uvwp(eqn,prop,geom,phic,geom%ne,geom%nf,geom%nbf)
+    enddo
 
   end subroutine
 

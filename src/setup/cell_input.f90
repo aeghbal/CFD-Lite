@@ -7,7 +7,7 @@
 
     contains
 
-    subroutine cell_input(geom,cgfilename,n_subdomains)
+    subroutine cell_input(geom,cgfilename)
     use mod_calc_vol_cv_centers
     use mod_calc_aip_xyzip
     use mod_agglomeration
@@ -21,7 +21,6 @@
     type (cgnsdb) :: cg
     type (geometry_t) :: geom
 
-    integer :: n_subdomains
     integer :: ne,nf,nbf,nsec,target_ncv,aiplength,length,vlength,p,istat
     integer :: m,n,g,gnb,ls,idx,s,is,ie,js,je,ks,ke,i,j,k,np,cvs(3),cvs_f(3),l,step(3),z,gr(3),gf2vx_size
     integer , pointer , dimension(:) :: nl,ne2vx
@@ -30,6 +29,7 @@
     real, parameter :: unitscale=1.0_8
 
      icell= 1
+     agg_method = 'Weighted Directional'!'Oct-Tree Isotropic'
 
      associate(mg_lvl => geom%mg)
 
@@ -128,16 +128,7 @@
        enddo
 
        npmax=p-1
-       if(n_subdomains>1) then ! domain decomposition here
-         npmax=2
-         nl=0
-         nl(1)=n_subdomains
-         nl(2)=1
-         print *, 'Number of subdomains:',n_subdomains
-       else
-         print *,'max mglvl:',p,nl
-       endif
-       agg_method = 'Oct-Tree Isotropic'
+       print *,'max mglvl:',p
 
       if(agg_method(1:18)=='Oct-Tree Isotropic') call mg_lvl%generate_seeds(nl,npmax,ne,geom%vol,geom%xc,geom%yc,geom%zc)
 
@@ -149,7 +140,6 @@
         endif
         call mg_lvl%add_meshds(nsec,geom%x,geom%y,geom%z)
       enddo
-
     end associate
 
     call cg_close_f(cg%unit, ier)

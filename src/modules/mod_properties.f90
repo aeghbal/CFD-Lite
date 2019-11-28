@@ -2,9 +2,9 @@
 module mod_properties
     real, parameter :: universal_gas_constant=8.314
 
-    integer, parameter :: NPHASES=2,NCOMPONENTS=7
-    integer, parameter :: AIR=1,WAT_LIQ=2,WAT_VAP=3
-    integer, parameter :: LIQUID=1,GAS=2
+    integer, parameter :: NPHASES=2,NCOMPONENTS=2
+    integer, parameter :: WAT_VAP=1,WAT_LIQ=2,AIR=3
+    integer, parameter :: GAS=1,LIQUID=2
 
     type  :: properties_t
       ! Store phase and component
@@ -104,7 +104,7 @@ module mod_properties
         prop%tc_coef = (/1.0,0.0,0.0,0.0,0.0/)
         prop%diff_coef = (/1.0,0.0,0.0,0.0,0.0/)
         prop%sigma_coef = (/1.0,0.0,0.0,0.0,0.0/)
-      case(WAT_VAP)
+       case(WAT_VAP)
         prop%rgas=1.0
         prop%mw=1.0
         prop%pvap_coef = (/1.0,0.0,0.0/)
@@ -114,7 +114,7 @@ module mod_properties
         prop%tc_coef = (/1.0,0.0,0.0,0.0,0.0/)
         prop%diff_coef = (/1.0,0.0,0.0,0.0,0.0/)
         prop%sigma_coef = (/1.0,0.0,0.0,0.0,0.0/)
-      case(AIR)
+       case(AIR)
         prop%rgas=1.0
         prop%mw=1.0
         prop%pvap_coef = (/1.0,0.0,0.0/)
@@ -137,27 +137,6 @@ module mod_properties
     endselect
 
     end subroutine init_properties
-
-    subroutine update_properties(prop,iphase,icomponent,T,P,ne)
-    implicit none
-    type (properties_t) :: prop
-    integer :: iphase,icomponent,ne
-    real, dimension(ne) :: T,P
-
-    ! calculate density
-    if(iphase==GAS) then
-      call calc_pvap(prop%pvap,prop%pvap_coef,T,ne)
-      call calc_rho_idea(prop%rho,prop%rgas,P,T,ne)
-    else
-      call calc_poly4(prop%rho,prop%rho_coef,T,ne)
-    endif
-    call calc_poly4(prop%mu,prop%mu_coef,T,ne)
-    call calc_poly4(prop%cp,prop%cp_coef,T,ne)
-    call calc_poly4(prop%tc,prop%tc_coef,T,ne)
-    call calc_poly4(prop%diff,prop%diff_coef,T,ne)
-    call calc_poly4(prop%sigma,prop%sigma_coef,T,ne)
-
-    end subroutine
 
     subroutine calc_pvap(pvap,coef,T,ne)
       real, dimension(ne) :: T,pvap

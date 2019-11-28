@@ -1,6 +1,5 @@
 module mod_solver
   use mod_util
-  use mod_subdomains
   implicit none
 
     character(len=*), parameter :: oformat = "(5x,A16,x,i5,x,15x,es9.3e2,3x,es9.3e2,3x,es9.3e2)"
@@ -121,137 +120,6 @@ module mod_solver
 
   end subroutine
 
-  subroutine multi_subdomain_solver(cname,subdomain,intf,geom,ap,anb,b,phi,nsubd,nit)
-    implicit none
-    integer :: nit,nsubd
-    character(len=*) :: cname
-    real , dimension(*):: ap,anb,b,phi
-    type(geometry_t) :: geom
-    type(subdomain_t) :: subdomain(nsubd)
-    type(intf_t) :: intf(nsubd,nsubd)
-    integer :: c ,i,j,it
-    character(len=32) :: name
-    real :: res,res_max,res_i_tot,res_max_tot,res_f_tot,res_target
-
-    ! assemble subdomain coef
-    call assemble_coef(subdomain,geom,ap,anb,b,phi,nsubd)
-
-    ! solve
-    res_i_tot=0.
-    res_f_tot=0.
-    res_max_tot=0.
-    ! calculate initial residual
-    do c=1,nsubd
-      call calc_residual(subdomain(c)%phic,subdomain(c)%ap,subdomain(c)%anb,subdomain(c)%b,subdomain(c)%ef2nb_idx,subdomain(c)%ef2nb,&
-                         subdomain(c)%ne,subdomain(c)%nf,subdomain(c)%nbf,res,res_max)
-      res_i_tot=res_i_tot+res**2
-      res_max_tot=max(res_max_tot,res_max)
-    end do
-    res_i_tot=sqrt(res_i_tot/nsubd)
-
-    ! loop until convergence criteria is fulfilled
-    it=0
-    res_f_tot=res_i_tot
-    res_target=res_i_tot/10.! reduce residual 1 order of magnitude
-    if(cname(1:2)=='pc') res_target=res_i_tot/10.
-    do while(it<nit .and. res_f_tot>res_target)
-      ! smooth each subdomain solution 2 iterations
-      do c=1,nsubd
-        call smoother_gs(cname,subdomain(c)%phic,subdomain(c)%ap,subdomain(c)%anb,subdomain(c)%b,subdomain(c)%ef2nb_idx,subdomain(c)%ef2nb,&
-                         subdomain(c)%ne,subdomain(c)%nf,subdomain(c)%nbf,2)
-      end do
-      it=it+2
-      ! update interface halos
-      do i=1,nsubd
-        do j=i+1,nsubd
-          call update_halos(intf(i,j),subdomain(i),subdomain(j),geom)
-        end do
-      end do
-      ! calculate residuals every 10 iteration
-      if(mod(it,10)==0) then
-        do c=1,nsubd
-          call calc_residual(subdomain(c)%phic,subdomain(c)%ap,subdomain(c)%anb,subdomain(c)%b,subdomain(c)%ef2nb_idx,subdomain(c)%ef2nb,&
-                         subdomain(c)%ne,subdomain(c)%nf,subdomain(c)%nbf,res,res_max)
-          res_f_tot=res_f_tot+res**2
-          res_max_tot=max(res_max_tot,res_max)
-        end do
-        res_f_tot=sqrt(res_f_tot/nsubd)
-      endif
-
-    end do
-
-    name=trim(cname)
-    write(*,oformat) name,it,res_i_tot,res_f_tot,res_max_tot
-
-    ! update main domain phi
-    call update_phi(subdomain,phi,geom,nsubd)
-
-  end subroutine
-
-  subroutine smoother_gs(cname,phi,ap,anb,b,ef2nb_idx,ef2nb,ne,nf,nbf,nit)
-    implicit none
-    character(len=*) :: cname
-    real, dimension(ne+nbf) :: phi
-    real, dimension(ne) :: ap,b
-    real, dimension(2*nf-nbf) :: anb
-    integer :: ef2nb_idx(ne+1),ef2nb(2*nf-nbf,2)
-    integer :: ne,nf,nbf,nit,it
-    integer :: e,idx,enb,lfnb
-    real :: sumnb,sor
-
-    sor=1.
-    if(cname(1:2)=='pc') sor=1.02
-
-  do it=1,nit
-    ! forward sweep
-    do e=1,ne
-      sumnb=b(e)
-      do idx=ef2nb_idx(e),ef2nb_idx(e+1)-1
-        call get_idx(ef2nb(idx,1),0,enb,lfnb)
-        sumnb=sumnb+anb(idx)*phi(enb)
-      end do
-      phi(e)=(sumnb+(sor-1.)*ap(e)*phi(e))/ap(e)/sor
-    end do
-
-    ! backward sweep
-    do e=ne,1,-1
-      sumnb=b(e)
-      do idx=ef2nb_idx(e),ef2nb_idx(e+1)-1
-        call get_idx(ef2nb(idx,1),0,enb,lfnb)
-        sumnb=sumnb+anb(idx)*phi(enb)
-      end do
-      phi(e)=(sumnb+(sor-1.)*ap(e)*phi(e))/ap(e)/sor
-    end do
-
-  enddo
-
-  end subroutine
-
-  subroutine calc_residual(phi,ap,anb,b,ef2nb_idx,ef2nb,ne,nf,nbf,res,res_max)
-    real, dimension(ne+nbf) :: phi
-    real, dimension(ne) :: ap,b
-    real, dimension(2*nf-nbf) :: anb
-    integer :: ef2nb_idx(ne+1),ef2nb(2*nf-nbf,2)
-    integer :: ne,nf,nbf,nit,it
-    integer :: e,idx,enb,lfnb
-    real :: sumnb,res,res_max,r
-
-    res=0.
-    res_max=0.
-    do e=1,ne
-      sumnb=b(e)
-      do idx=ef2nb_idx(e),ef2nb_idx(e+1)-1
-        call get_idx(ef2nb(idx,1),0,enb,lfnb)
-        sumnb=sumnb+anb(idx)*phi(enb)
-      end do
-      r=sumnb-ap(e)*phi(e)
-      res_max=max(r,res_max)
-      res=res+r**2
-    end do
-    res=sqrt(res/ne)
-
-  end subroutine
-
   subroutine solve_gs(cname,phi,ap,anb,b,ef2nb_idx,ef2nb,ne,nf,nbf,nit)
     implicit none
     character(len=*) :: cname
@@ -321,25 +189,8 @@ module mod_solver
     res_f=sqrt(res_f/ne)
   enddo
 
-    name=trim(cname)
-    write(*,oformat) name,it,res_i,res_f,res_max
-
-  end subroutine
-
-  subroutine solve(cname,subdomain,intf,geom,ap,anb,b,phi,nsubd,nit)
-    implicit none
-    integer :: nit,nsubd
-    character(len=*) :: cname
-    real , dimension(*):: ap,anb,b,phi
-    type(geometry_t) :: geom
-    type(subdomain_t) :: subdomain(nsubd)
-    type(intf_t) :: intf(nsubd,nsubd)
-
-    if(nsubd==1) then
-      call solve_gs(cname,phi,ap,anb,b,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
-    else
-      call multi_subdomain_solver(cname,subdomain,intf,geom,ap,anb,b,phi,nsubd,nit)
-    end if
+  name=trim(cname)
+  write(*,oformat) name,it,res_i,res_f,res_max
 
   end subroutine
 end module
