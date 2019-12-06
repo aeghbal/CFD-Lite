@@ -4,7 +4,7 @@ module mod_properties
 
     integer, parameter :: NPHASES=2,NCOMPONENTS=2
     integer, parameter :: WAT_VAP=1,WAT_LIQ=2,AIR=3
-    integer, parameter :: GAS=1,LIQUID=2
+    integer, parameter :: MIXTURE=0,GAS=1,LIQUID=2
 
     type  :: properties_t
       ! Store phase and component
@@ -57,7 +57,7 @@ module mod_properties
       real, pointer, dimension(:) :: prop
       character(len=*) :: cprop
 
-      select case(cprop)
+      select case(trim(cprop))
         case('rho')
           prop=>property%rho
         case('mu')
@@ -82,16 +82,29 @@ module mod_properties
     allocate(prop%mu(ne))
     allocate(prop%cp(ne))
     allocate(prop%tc(ne))
-
-    prop%rho=5.
-    prop%mu=0.01
-    prop%tc=5.
-    prop%cp=1000.
+    allocate(prop%sigma(ne))
+    allocate(prop%pvap(ne))
+    select case(icomponent)
+      case(WAT_LIQ)
+        prop%rho=997
+        prop%mu=0.001
+        prop%cp=4200
+        prop%tc=0.6
+        prop%sigma=0.060
+        prop%mw=0.018
+        prop%rgas=461
+      case(WAT_VAP)
+        prop%rho=0.6
+        prop%mu=1e-5
+        prop%cp=2000
+        prop%tc=0.03
+        prop%sigma=0.060
+        prop%mw=0.018
+        prop%rgas=461
+    end select
     return
 
     allocate(prop%diff(ne))
-    allocate(prop%sigma(ne))
-    allocate(prop%pvap(ne))
 
     select case(icomponent)
       case(WAT_LIQ)

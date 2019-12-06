@@ -137,6 +137,7 @@ module mod_solver
     if(cname(1:2)=='pc') sor=1.02
 
     res_i=0.! initial residual
+    res_max=0.
     do e=1,ne
       sumnb=b(e)
       do idx=ef2nb_idx(e),ef2nb_idx(e+1)-1
@@ -156,6 +157,7 @@ module mod_solver
     it=it+1
     ! forward sweep
     do e=1,ne
+      if(ap(e)==0.) cycle
       sumnb=b(e)
       do idx=ef2nb_idx(e),ef2nb_idx(e+1)-1
         call get_idx(ef2nb(idx,1),0,enb,lfnb)
@@ -166,6 +168,7 @@ module mod_solver
 
     ! backward sweep
     do e=ne,1,-1
+      if(ap(e)==0.) cycle
       sumnb=b(e)
       do idx=ef2nb_idx(e),ef2nb_idx(e+1)-1
         call get_idx(ef2nb(idx,1),0,enb,lfnb)

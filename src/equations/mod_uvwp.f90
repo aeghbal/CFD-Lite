@@ -17,16 +17,15 @@ module mod_uvwp
 
 contains
 ! init uvwp field
-  function construct_uvwp(geom,prop,dt,vfr,vfr0) result(eqn)
+  function construct_uvwp(geom,prop,dt,phase) result(eqn)
     use mod_properties
     implicit none
     type(uvwp_t), pointer :: eqn
     type(properties_t) :: prop
     type(geometry_t) :: geom
-    integer :: ne,nbf,length
+    integer :: ne,nbf,length,phase
     type(bc_t), pointer :: bcp
     real :: dt
-    real, pointer, dimension(:) :: vfr,vfr0
 
     allocate(eqn)
     length = geom%ne+geom%nbf
@@ -68,6 +67,7 @@ contains
     eqn%gv=0.
     eqn%gw=0.
     eqn%mip=0.
+    eqn%dc=0.
 
     allocate(eqn%bcs(geom%mg%nintf))
 ! set BC for uvwp
@@ -111,7 +111,7 @@ contains
 ! Magnitude relative velocity
       dv=[eqn%u(e)-u_bg(e),eqn%v(e)-v_bg(e),eqn%w(e)-w_bg(e)]
       tmp = sqrt(sum(dv**2))
-      diam = (6./3.14*vfr(e)/ndf(e))*(1./3.)
+      diam = (6./3.14*vfr(e)/ndf(e))**(1./3.)
 ! Droplet Reynolds number
       ReD = (rho_bg(e)*diam*tmp)/prop%mu(e)
 ! Time constant
@@ -156,7 +156,7 @@ contains
   end subroutine
 
 ! make coef for uvwp
-  subroutine calc_coef_uvw(eqn,ap,anb,geom,prop,dt)
+  subroutine calc_coef_uvw(eqn,ap,anb,geom,prop,dt,src_mass,sdc_mom,src_sgn,alpha)
     use mod_util
     use mod_properties
     implicit none
@@ -165,7 +165,8 @@ contains
     class(uvwp_t) :: eqn
     integer :: e,enb,lfnb,idx,fg,fg_sgn,lf
     real :: dt,ap(geom%ne),anb(geom%nf*2-geom%nbf)
-    real :: d,f,fnb,sumf,vol,wt,muip,ds,ds_p,area,ap0
+    real, dimension(*) :: src_mass,sdc_mom,alpha
+    real :: d,f,fnb,sumf,vol,wt,muip,ds,ds_p,area,ap0,src_sgn
     real, dimension(3) :: dr,norm,rip,vrel,vbnc,gip,rp,rpnb,rp_p,rpnb_p,sumss,sumdefc,dr_p,drip
     integer :: i,ibc,m
 
@@ -204,7 +205,7 @@ contains
           fnb=max(f,0.)
           sumf=sumf+f
           ! diffusion term
-          muip=(1.-wt)*prop%mu(e)+wt*prop%mu(enb)
+          muip=(1.-wt)*prop%mu(e)*alpha(e)+wt*prop%mu(enb)*alpha(enb)
           d=muip*area/ds
 
           ! secondary stress term
@@ -228,12 +229,12 @@ contains
         ap(e)=ap(e)+d+fnb
       enddo
 
-      ap0=prop%rho(e)*geom%vol(e)/dt
+      ap0=alpha(e)*prop%rho(e)*geom%vol(e)/dt
       ap(e)=ap(e)+ap0
 
-      eqn%bu(e)=ap0*eqn%u0(e)+sumf*eqn%u(e)-geom%vol(e)*eqn%gp(3*e-2)+sumss(1)+sumdefc(1)
-      eqn%bv(e)=ap0*eqn%v0(e)+sumf*eqn%v(e)-geom%vol(e)*eqn%gp(3*e-1)+sumss(2)+sumdefc(2)
-      eqn%bw(e)=ap0*eqn%w0(e)+sumf*eqn%w(e)-geom%vol(e)*eqn%gp(3*e)  +sumss(3)+sumdefc(3)
+      eqn%bu(e)=ap0*eqn%u0(e)+sumf*eqn%u(e)-alpha(e)*geom%vol(e)*eqn%gp(3*e-2)+sumss(1)+sumdefc(1)+src_sgn*(src_mass(e)*eqn%u(e))!+sdc_mom(e)*abs(eqn%u(e)-u_bg(e))*(u_bg(e)-eqn%u(e))
+      eqn%bv(e)=ap0*eqn%v0(e)+sumf*eqn%v(e)-alpha(e)*geom%vol(e)*eqn%gp(3*e-1)+sumss(2)+sumdefc(2)+src_sgn*(src_mass(e)*eqn%v(e))!+sdc_mom(e)*abs(eqn%u(e)-u_bg(e))*(u_bg(e)-eqn%u(e))
+      eqn%bw(e)=ap0*eqn%w0(e)+sumf*eqn%w(e)-alpha(e)*geom%vol(e)*eqn%gp(3*e)  +sumss(3)+sumdefc(3)+src_sgn*(src_mass(e)*eqn%w(e))!+sdc_mom(e)*abs(eqn%u(e)-u_bg(e))*(u_bg(e)-eqn%u(e))
 
     end do
 
@@ -252,7 +253,7 @@ contains
         select case(trim(eqn%bcs(ibc)%bc_type))
           case('dirichlet')
             f=0.
-            d=prop%mu(e)*area/ds
+            d=prop%mu(e)*area/ds*alpha(e)
             vbnc=[eqn%u(enb),eqn%v(enb),eqn%w(enb)]
             vrel=[eqn%u(e),eqn%v(e),eqn%w(e)]
             vrel=vrel-dot_product(vrel,norm)*norm! transverse velocity
@@ -263,7 +264,7 @@ contains
             eqn%bw(e)=eqn%bw(e)+d*vrel(3)-d*eqn%w(e)
           case('zero_flux')
             f=0.
-            d=prop%mu(e)*area/ds
+            d=prop%mu(e)*area/ds*alpha(e)
         end select
         ap(e)=ap(e)+d+f
         anb(idx)=anb(idx)+d+f
@@ -272,13 +273,15 @@ contains
 
     ! calculate Rhie-Chow and SIMPLEC coef
     do e=1,geom%ne
-      eqn%d(e)=geom%vol(e)/ap(e)! Rhie-Chow
+      eqn%d(e) = 0.
+      if(alpha(e)==0) cycle
+      eqn%d(e)=geom%vol(e)/ap(e)*alpha(e)! Rhie-Chow
 
       eqn%dc(e)=ap(e)
       do idx=geom%ef2nb_idx(e),geom%ef2nb_idx(e+1)-1
         eqn%dc(e)=eqn%dc(e)-anb(idx)
       enddo
-      eqn%dc(e)=geom%vol(e)/eqn%dc(e)! SIMPLEC
+      eqn%dc(e)=geom%vol(e)/eqn%dc(e)*alpha(e)! SIMPLEC
     enddo
 
   end subroutine
@@ -365,7 +368,7 @@ contains
 
   end subroutine
 
-  subroutine update_uvwp(eqn,prop,geom,pc,ne,nf,nbf)
+  subroutine update_mip(eqn,prop,geom,pc,ne,nf,nbf)
     use mod_properties
     use mod_util
     implicit none
@@ -377,17 +380,6 @@ contains
     real :: dmip,rhoip,area,dip,wt
     real, dimension(3) :: norm,rp,rpnb,dr,rip
     integer :: e,fg,idx,enb,lfnb,lf,i,ibc,idx1
-
-    do e=1,ne
-      eqn%p(e)= eqn%p(e)+pc(e)
-      eqn%gp(3*e-2:3*e)=eqn%gp(3*e-2:3*e)+eqn%gpc(3*e-2:3*e)
-      ! correct velocity field
-      if(.false.) then
-      eqn%u(e)=eqn%u(e)-eqn%dc(e)*eqn%gpc(3*e-2)
-      eqn%v(e)=eqn%v(e)-eqn%dc(e)*eqn%gpc(3*e-1)
-      eqn%w(e)=eqn%w(e)-eqn%dc(e)*eqn%gpc(3*e)
-      endif
-    end do
 
     do fg=1,nf
       call get_idx(geom%mg%fine_lvl%s2g(fg),0,e,lf)
@@ -433,14 +425,43 @@ contains
 
   end subroutine
 
-  subroutine calc_mip(eqn,prop,geom,lRhieChow,dt)
+  subroutine update_uvwp(eqn,prop,geom,pc,ne,nf,nbf)
+    use mod_properties
+    use mod_util
+    implicit none
+    type(properties_t) :: prop
+    type(uvwp_t) :: eqn
+    type(geometry_t) :: geom
+    integer :: ne,nf,nbf
+    real, dimension(ne+nbf) :: pc
+    real :: dmip,rhoip,area,dip,wt
+    real, dimension(3) :: norm,rp,rpnb,dr,rip
+    integer :: e,fg,idx,enb,lfnb,lf,i,ibc,idx1
+
+    do e=1,ne
+      eqn%p(e)= eqn%p(e)+pc(e)
+      eqn%gp(3*e-2:3*e)=eqn%gp(3*e-2:3*e)+eqn%gpc(3*e-2:3*e)
+      ! correct velocity field
+      if(.false.) then
+      eqn%u(e)=eqn%u(e)-eqn%dc(e)*eqn%gpc(3*e-2)
+      eqn%v(e)=eqn%v(e)-eqn%dc(e)*eqn%gpc(3*e-1)
+      eqn%w(e)=eqn%w(e)-eqn%dc(e)*eqn%gpc(3*e)
+      endif
+    end do
+
+    !call upate_mip(eqn,prop,geom,pc,ne,nf,nbf)
+
+  end subroutine
+
+  subroutine calc_mip(eqn,prop,geom,lRhieChow,dt,alpha)
     use mod_util
     use mod_properties
     implicit none
     type(uvwp_t) :: eqn
     type(geometry_t) :: geom
     type(properties_t) :: prop
-    real :: wt,area,veln,dip,rhoip,dt
+    real :: wt,area,veln,dip,rhoip,dt,alpha_ip
+    real, optional :: alpha(*)
     real, dimension(3) :: rp,rpnb,rip,norm,vec1,vec2,dr,velip,gpip,velip0
     integer :: fg,e,lf,idx,enb,lfnb,i
     logical :: lRhieChow
@@ -465,9 +486,11 @@ contains
       vec1=[u(e),v(e),w(e)]
       vec2=[u(enb),v(enb),w(enb)]
       velip= (1.-wt)*vec1+wt*vec2
+      alpha_ip=1.
+      if(present(alpha)) alpha_ip=(1.-wt)*alpha(e)+wt*alpha(enb)
       rhoip=prop%rho(e)*(1.-wt)+prop%rho(enb)*wt
 
-      mip(fg)=dot_product(velip,norm)*rhoip*area
+      mip(fg)=dot_product(velip,norm)*rhoip*area*alpha_ip
 
       ! Rhie-Chow
       if(lRhieChow) then ! internal faces
@@ -478,8 +501,8 @@ contains
         vec2=[eqn%u0(enb),eqn%v0(enb),eqn%w0(enb)]
         velip0= (1.-wt)*vec1+wt*vec2
 
-        mip(fg) = mip(fg)-rhoip*area*dip/dot_product(dr,norm)*(eqn%p(enb) - eqn%p(e) - dot_product(gpip,dr))  &
-                         -rhoip/dt*dip*(eqn%mip0(fg)-dot_product(velip0,norm)*rhoip*area)
+        mip(fg) = mip(fg)-alpha_ip*rhoip*area*dip/dot_product(dr,norm)*(eqn%p(enb) - eqn%p(e) - dot_product(gpip,dr))  &
+                         -alpha_ip*rhoip/dt*dip*(eqn%mip0(fg)-dot_product(velip0,norm)*rhoip*area)
       endif
 
     end do

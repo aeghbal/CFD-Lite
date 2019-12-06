@@ -11,15 +11,14 @@ module mod_energy
 
 contains
 ! init energy field
-  function construct_energy(geom,mip,prop,vfr,vfr0) result(eqn)
+  function construct_energy(geom,mip,prop,phase) result(eqn)
     implicit none
     type(energy_t), pointer :: eqn
     type(properties_t) :: prop
     real, target, dimension(:) :: mip
     type(geometry_t) :: geom
-    integer :: ne,nbf,length
+    integer :: ne,nbf,length,phase
     type(bc_t), pointer :: bcp
-    real, pointer, dimension(:) :: vfr,vfr0
 
     allocate(eqn)
     length = geom%ne+geom%nbf
@@ -32,7 +31,11 @@ contains
     eqn%mip=>mip
 ! initialize
     eqn%t=273.
-    eqn%phi=eqn%t*prop%cp
+    if(phase==GAS) then
+      eqn%phi=eqn%t*prop%cp
+    else
+      eqn%phi=eqn%t*prop%cp
+    endif
     eqn%phi0=eqn%phi
     eqn%grad=0.
     eqn%gt=0.
@@ -57,7 +60,7 @@ contains
 
   end subroutine
 ! make coef for energy
-  subroutine calc_coef_energy(eqn,ap,anb,b,geom,prop,dt)
+  subroutine calc_coef_energy_alg(eqn,geom,prop,dt)
     use mod_util
     use mod_properties
     implicit none
@@ -66,11 +69,34 @@ contains
     class(energy_t) :: eqn
     integer :: e,enb,lfnb,idx,fg,fg_sgn,lf
     real :: dt
-    real :: d,f,fnb,sumf,vol,ap(*),anb(*),b(*),sumdefc
+    real :: d,f,fnb,sumf,vol
+    real :: v_m
+    real, parameter :: pi=3.14,gam=1.4,L=2230,K_b=1.38e-23,R_u=8.3145,M_wat=0.018
+
+
+    do e=1,geom%ne
+      !v_m=M_wat/rcvr%prop%rho(e)
+      ! Antoine eqn
+      !p_sat=10.**(8.1-1770./(240.+eqn%t(e)))
+      !r_crit=2*rcvr%prop%sigma(e)*v_m/(R_u*dnr%energy%t(e)*log(mixtr%uvwp%p(e)/p_sat)
+
+    end do
+  end subroutine
+
+  subroutine calc_coef_energy(eqn,ap,anb,b,geom,prop,dt,src_mass,src_enrg,src_sgn,alpha)
+    use mod_util
+    use mod_properties
+    implicit none
+    type(properties_t) :: prop
+    type(geometry_t) :: geom
+    class(energy_t) :: eqn
+    integer :: e,enb,lfnb,idx,fg,fg_sgn,lf
+    real :: dt,alpha(*),alpha_ip
+    real :: d,f,fnb,sumf,vol,ap(*),anb(*),b(*),sumdefc,src_mass(*),src_sgn,src_enrg(*)
     real :: area,ap0,wt,tci,cpi,ds
     real, dimension(3) :: dr,norm,rip,rp,rpnb,ghi,gti
     integer :: i,ibc
-    ! dPHi/dt+Div.(u.Phi)=Div.(dcoef.Grad(Phi))
+    real, parameter :: pi=3.14,gam=1.4,L=2230
 
     do e=1,geom%ne
 
@@ -102,7 +128,8 @@ contains
         ! diffusion term
         tci=(1.-wt)*prop%tc(e)+wt*prop%tc(enb)
         cpi=(1.-wt)*prop%cp(e)+wt*prop%cp(enb)
-        d=tci/cpi/dot_product(dr,norm)*area
+        alpha_ip=(1.-wt)*alpha(e)+wt*alpha(enb)
+        d=tci/cpi/dot_product(dr,norm)*area*alpha_ip
         ghi=(1.-wt)*eqn%grad(3*e-2:3*e)+wt*eqn%grad(3*enb-2:3*enb)
         gti=(1.-wt)*eqn%gt(3*e-2:3*e)+wt*eqn%gt(3*enb-2:3*enb)
         sumdefc=sumdefc+tci*area*(dot_product(gti,norm)-dot_product(ghi,norm)/cpi)
@@ -111,9 +138,9 @@ contains
         ap(e)=ap(e)+d+fnb
       enddo
 
-      ap0=prop%rho(e)*geom%vol(e)/dt
+      ap0=prop%rho(e)*geom%vol(e)/dt*alpha(e)
       ap(e)=ap(e)+ap0
-      b(e)=ap0*eqn%phi0(e)+sumf*eqn%phi(e)+sumdefc
+      b(e)=ap0*eqn%phi0(e)+sumf*eqn%phi(e)+sumdefc+src_sgn*src_mass(e)*L
 
     end do
 
@@ -132,7 +159,7 @@ contains
         select case(trim(eqn%bcs(ibc)%bc_type))
           case('dirichlet')
             f=0.
-            d=prop%tc(e)*area/ds/prop%cp(e)
+            d=prop%tc(e)*area/ds/prop%cp(e)*alpha(e)
 
             !b(e)=b(e)
           case('zero_flux')

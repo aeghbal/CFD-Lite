@@ -32,7 +32,6 @@ program cfdite
   write(*,'(5x,A16,x,A5,x,A15,A9,3x,A9,3x,A9)') 'solve eqn       ','nit','residual(rms)','initial','final','max'
   do tstep=1,phys%ntstep
     do icoef=1,phys%ncoef
-       call update_boundaries(phys,geom)
 
       ! solve continuity/mass
       call solve_vfr(phys,geom)
@@ -46,10 +45,13 @@ program cfdite
       if(icoef>1) then
         ! solve energy
         call solve_energy(phys,geom)
+        ! solve population balance eqn
+        call solve_ndf(phys,geom)
         ! solve mass fraction
-        call solve_mfr(phys,geom)
+        !call solve_mfr(phys,geom)
         ! update properties
         call solve_properties(phys,geom)
+
       endif
     end do
 
@@ -58,8 +60,9 @@ program cfdite
     write(*,'(A,i5,A)') '------------------------------------time step(',tstep,')'
 
     if(mod(tstep,10)==0) then
-      call write_vtubin(phys%uvwp,geom,projPath,tstep)
-      call write_vtubin(phys%energy,geom,projPath,tstep)
+      call write_vtubin(phys%phase(MIXTURE)%uvwp,geom,projPath,tstep)
+      call write_vtubin(phys%phase(GAS)%energy,geom,projPath,tstep)
+      call write_vtubin(phys%phase(LIQUID)%ndf,geom,projPath,tstep)
     endif
 
   end do

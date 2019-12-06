@@ -11,13 +11,13 @@ module mod_vfr
 
 contains
 ! init vfr field
-  function construct_vfr(geom,mip,prop) result(eqn)
+  function construct_vfr(geom,mip,prop,phase) result(eqn)
     implicit none
     type(vfr_t), pointer :: eqn
     type(properties_t) :: prop
     real, target, dimension(:) :: mip
     type(geometry_t) :: geom
-    integer :: ne,nbf,length
+    integer :: ne,nbf,length,phase
     type(bc_t), pointer :: bcp
 
     allocate(eqn)
@@ -29,10 +29,17 @@ contains
     allocate(eqn%mfr(length))
     eqn%mip=>mip
 ! initialize
-    eqn%phi=0.
-    eqn%phi0=0.
+    if(phase==GAS) then
+      eqn%phi=1.
+      eqn%mfr=1.
+      eqn%phi0=1.
+    else
+      eqn%phi=0.
+      eqn%mfr=0.
+      eqn%phi0=0.
+    endif
     eqn%grad=0.
-    eqn%mfr=0.
+
 ! set BC for vfr
     allocate(eqn%bcs(geom%mg%nintf))
 ! set BC for vfr
@@ -49,12 +56,12 @@ contains
     implicit none
     type(vfr_t),pointer :: eqn
 
-    deallocate(eqn%bcs,eqn%grad,eqn%phi0,eqn%phi)
+    deallocate(eqn%bcs,eqn%grad,eqn%phi0,eqn%phi,eqn%mfr)
     deallocate(eqn)
 
   end subroutine
 ! make coef for vfr
-  subroutine calc_coef_vfr(eqn,ap,anb,b,geom,prop,dt,ndf,T_bg,rho_bg)
+  subroutine calc_coef_vfr(eqn,ap,anb,b,geom,prop,dt,src_nucl,src_mass,src_sgn)
     use mod_util
     use mod_properties
     implicit none
@@ -62,21 +69,14 @@ contains
     type(geometry_t) :: geom
     class(vfr_t) :: eqn
     integer :: e,enb,lfnb,idx,fg,fg_sgn,lf
-    real :: dt,DGibbs
+    real :: dt,src_sgn
     real :: d,f,fnb,sumf,vol,ap(*),anb(*),b(*),sumdefc
-    real, dimension(*) :: T_bg,rho_bg,ndf
-    real :: area,ap0,wt,ds,J,eta,r_crit
-    real, parameter :: z=1.0,pi=3.14,gam=1.4,L=2230,K_b=1.38e-23,R_u=8.3145,M_wat=18
+    real, dimension(*) :: src_nucl,src_mass
+    real :: area,ap0,wt,ds
     real, dimension(3) :: dr,norm,rip,rp,rpnb,ghi,gti
     integer :: i,ibc
 
     do e=1,geom%ne
-
-
-      DGibbs=prop%sigma(e)*(eqn%phi(e)/ndf(e)*geom%vol(e))
-      r_crit=2*prop%sigma(e)/prop%rho(e)/DGibbs
-      eta=2*(gam-1)/(gam+1)*L/R_u/T_bg(e)*(L/R_u/T_bg(e)-0.5)
-      J=z/(1+eta)*sqrt(2*prop%sigma(e)/pi/M_wat**3)*rho_bg(e)**2/prop%rho(e)*exp(-4*pi*r_crit**2*prop%sigma(e)/3/K_b/T_bg(e))
 
       ap(e)=0._8
       sumf=0.
@@ -111,7 +111,7 @@ contains
 
       ap0=prop%rho(e)*geom%vol(e)/dt
       ap(e)=ap(e)+ap0
-      b(e)=ap0*eqn%phi0(e)+sumf*eqn%phi(e)+sumdefc
+      b(e)=ap0*eqn%phi0(e)+sumf*eqn%phi(e)+sumdefc+src_sgn*(src_nucl(e)+src_mass(e))
 
     end do
 

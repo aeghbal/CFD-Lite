@@ -16,12 +16,18 @@ contains
 
   do n=1,NPHASES
     phys%iphase=n
-    associate(eqn=>phys%phase(n)%uvwp,prop=>phys%phase(n)%prop,ap=>phys%ap,anb=>phys%anb,b=>phys%b,phic=>phys%phic,nit=>phys%nit,dt=>phys%dt)
+    associate(eqn=>phys%phase(n)%uvwp,prop=>phys%phase(n)%prop,ap=>phys%ap,anb=>phys%anb,b=>phys%b,phic=>phys%phic,nit=>phys%nit,dt=>phys%dt,alpha=>phys%phase(n)%vfr%phi)
+
+    ! update boundaries
+    do m=1,phys%nintf
+      call eqn%bcs(m)%coef(geom,eqn,prop)
+    enddo
 
     if(phys%iphase==GAS) then
   !    call calc_grad(eqn%p,eqn%gp,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
 
-      call calc_coef_uvw(eqn,ap,anb,geom,prop,dt)
+      call calc_coef_uvw(eqn,ap,anb,geom,prop,dt, &
+                        phys%interaction(LIQUID,GAS)%scheme(MASS_EXCH)%src,phys%interaction(LIQUID,GAS)%scheme(MOMENTUM_EXCH)%sdc,phys%interaction(LIQUID,GAS)%scheme(MASS_EXCH)%sgn,alpha)
 
       !call set_a_0(eqn%u,geom%ne);call set_a_0(eqn%v,geom%ne);call set_a_0(eqn%w,geom%ne)
       call solve_gs('u',eqn%u,ap,anb,eqn%bu,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
@@ -32,23 +38,39 @@ contains
       call calc_grad(eqn%v,eqn%gv,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
       call calc_grad(eqn%w,eqn%gw,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
    ! Rhie Chow
-      call calc_mip(eqn,prop,geom,.true.,dt)
+      call calc_mip(eqn,prop,geom,.true.,dt,phys%phase(n)%vfr%phi)
 
     elseif(phys%iphase==LIQUID) then
+
+      call calc_coef_uvw(eqn,ap,anb,geom,prop,dt, &
+                        phys%interaction(GAS,LIQUID)%scheme(MASS_EXCH)%src,phys%interaction(GAS,LIQUID)%scheme(MOMENTUM_EXCH)%sdc,phys%interaction(GAS,LIQUID)%scheme(MASS_EXCH)%sgn,alpha)
+
+      !call set_a_0(eqn%u,geom%ne);call set_a_0(eqn%v,geom%ne);call set_a_0(eqn%w,geom%ne)
+      call solve_gs('u',eqn%u,ap,anb,eqn%bu,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
+      call solve_gs('v',eqn%v,ap,anb,eqn%bv,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
+      call solve_gs('w',eqn%w,ap,anb,eqn%bw,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
+
+      call calc_grad(eqn%u,eqn%gu,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
+      call calc_grad(eqn%v,eqn%gv,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
+      call calc_grad(eqn%w,eqn%gw,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
+   ! Rhie Chow
+      call calc_mip(eqn,prop,geom,.true.,dt,phys%phase(n)%vfr%phi)
+
+    else
 
       bg=AIR
 
       call calc_uvw_alg (eqn,geom,prop,dt,phys%phase(bg)%vfr%phi,phys%phase(bg)%ndf%phi, &
                         phys%phase(bg)%uvwp%u,phys%phase(bg)%uvwp%v,phys%phase(bg)%uvwp%w,phys%phase(bg)%prop%rho)
 
-      call calc_mip(eqn,prop,geom,.false.,dt)
+      call calc_mip(eqn,prop,geom,.false.,dt,phys%phase(n)%vfr%phi)
 
     endif
 
     end associate
   enddo
     ! calculate mixture momentum in preparation for pressure solution
-
+    call calc_mixture_field(phys%phase(MIXTURE)%uvwp,phys%phase,geom%ne,geom%nf)
 
     ! calculate source terms due to interaction between phases
     do n=1,NPHASES
@@ -73,17 +95,28 @@ contains
     real :: dt,pref
     integer :: nit,bg
 
-    associate(eqn=>phys%uvwp,prop=>phys%prop,ap=>phys%ap,anb=>phys%anb,b=>phys%b,phic=>phys%phic,nit=>phys%nit,dt=>phys%dt)
+    associate(eqn=>phys%phase(MIXTURE)%uvwp,prop=>phys%phase(MIXTURE)%prop,ap=>phys%ap,anb=>phys%anb,b=>phys%b,phic=>phys%phic,nit=>phys%nit,dt=>phys%dt)
+
+      ! update boundaries
+!      do m=1,phys%nintf
+!        call eqn%bcs(m)%coef(geom,eqn,prop)
+!      enddo
 
       call calc_coef_p(eqn,ap,anb,b,geom,prop)
 
       call set_a_0(phic,geom%ne+geom%nbf)
       call solve_gs('pc',phic,ap,anb,b,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
 
-      pref=phic(1)! if closed system
+      pref=1e5!phic(1)! if closed system
       call adjust_pc(phic,pref,geom)
       call calc_grad(phic,eqn%gpc,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
       call update_uvwp(eqn,prop,geom,phic,geom%ne,geom%nf,geom%nbf)
+      call update_mip(eqn,prop,geom,phic,geom%ne,geom%nf,geom%nbf)
+
+      ! update gas mip as well
+      !phys%phase(GAS)%uvwp%p=phys%phase(GAS)%uvwp%p
+      call update_mip(phys%phase(GAS)%uvwp,phys%phase(GAS)%prop,geom,phic,geom%ne,geom%nf,geom%nbf)
+      call update_mip(phys%phase(LIQUID)%uvwp,phys%phase(LIQUID)%prop,geom,phic,geom%ne,geom%nf,geom%nbf)
 
     end associate
 
@@ -101,13 +134,23 @@ contains
 
   do n=1,NPHASES
     phys%iphase=n
-    associate(eqn=>phys%phase(n)%energy,prop=>phys%phase(n)%prop,ap=>phys%ap,anb=>phys%anb,b=>phys%b,phic=>phys%phic,nit=>phys%nit,dt=>phys%dt)
+    associate(eqn=>phys%phase(n)%energy,prop=>phys%phase(n)%prop,ap=>phys%ap,anb=>phys%anb,b=>phys%b,phic=>phys%phic,nit=>phys%nit,dt=>phys%dt,alpha=>phys%phase(n)%vfr%phi)
+
+! update boundaries
+    do m=1,phys%nintf
+      call eqn%bcs(m)%coef(geom,eqn,prop)
+    enddo
 
     call calc_grad(eqn%t,eqn%gt,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
     call calc_grad(eqn%phi,eqn%grad,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
 
-    call calc_coef_energy(eqn,ap,anb,b,geom,prop,dt)
-
+    if(n==GAS) then
+      call calc_coef_energy(eqn,ap,anb,b,geom,prop,dt,&
+                            phys%interaction(LIQUID,GAS)%scheme(MASS_EXCH)%src,phys%interaction(LIQUID,GAS)%scheme(ENERGY_EXCH)%src,phys%interaction(LIQUID,GAS)%scheme(MASS_EXCH)%sgn,alpha)
+    elseif(n==LIQUID) then
+      call calc_coef_energy(eqn,ap,anb,b,geom,prop,dt,&
+                            phys%interaction(GAS,LIQUID)%scheme(MASS_EXCH)%src,phys%interaction(GAS,LIQUID)%scheme(ENERGY_EXCH)%src,phys%interaction(GAS,LIQUID)%scheme(MASS_EXCH)%sgn,alpha)
+    endif
     call solve_gs(eqn%name,eqn%phi,ap,anb,b,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
 
     call calc_temperature(eqn%t,eqn%phi,prop%cp,geom%ne)
@@ -136,16 +179,20 @@ contains
     real :: pref
     integer :: bg,n,m
 
-    n=phys%iphase
     ! solve phase continuity equations
     do n=1,NPHASES
       phys%iphase=n
       if(n==GAS) then
-        associate(eqn=>phys%phase(n)%vfr,prop=>phys%phase(n)%prop,ap=>phys%ap,anb=>phys%anb,b=>phys%b,phic=>phys%phic,nit=>phys%nit,dt=>phys%dt)
+        associate(eqn=>phys%phase(n)%vfr,prop=>phys%phase(n)%prop,ap=>phys%ap,anb=>phys%anb,b=>phys%b,phic=>phys%phic,nit=>phys%nit,dt=>phys%dt,alpha=>phys%phase(n)%vfr%phi)
+
+! update boundaries
+        do m=1,phys%nintf
+          call eqn%bcs(m)%coef(geom,eqn,prop)
+        enddo
 
         call calc_grad(eqn%phi,eqn%grad,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
 
-        call calc_coef_vfr(eqn,ap,anb,b,geom,prop,dt,phys%phase(n)%ndf%phi,phys%phase(n)%energy%t,phys%phase(n)%prop%rho)
+        call calc_coef_vfr(eqn,ap,anb,b,geom,prop,dt,phys%interaction(LIQUID,GAS)%scheme(NUCLEATION)%src,phys%interaction(LIQUID,GAS)%scheme(MASS_EXCH)%src,phys%interaction(LIQUID,GAS)%scheme(NUCLEATION)%sgn)
 
         call solve_gs(eqn%name,eqn%phi,ap,anb,b,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
 
@@ -155,9 +202,8 @@ contains
         call calc_algebraic_vfr(phys%phase,n,geom%ne)
 
       endif
-
-      call calc_phase_mfr(phys%phase,phys%phase(n)%mfr,geom)
     enddo
+    call calc_phase_mfr(phys%phase,geom)
 
     ! calculate source terms due to interaction between phases
     do n=1,NPHASES
@@ -171,37 +217,6 @@ contains
 
   end subroutine
 
-  subroutine calc_phase_mfr(phase,mfr,geom)
-   type(phase_t) :: phase(:)
-   real :: mfr(*)
-   type(geometry_t) :: geom
-   integer :: p,e
-   real :: mfr0
-
-   do e=1,geom%ne
-     mfr0=0.
-     do p=1,NPHASES
-       mfr0=mfr(e)+phase(p)%prop%rho(e)*phase(p)%vfr%phi(e)
-     enddo
-     do p=1,NPHASES
-       phase(p)%vfr%mfr(e)= phase(p)%prop%rho(e)*phase(p)%vfr%phi(e)/mfr0
-     end do
-   end do
- end subroutine
-
-  subroutine calc_component_vfr(vfr,mfr,geom,comp_prop,phase_prop)
-   real :: mfr(*),vfr(*)
-   type(geometry_t) :: geom
-   type(properties_t) :: comp_prop,phase_prop
-   integer :: p,e
-
-   do e=1,geom%ne
-
-       vfr(e)= phase_prop%rho(e)*mfr(e)/comp_prop%rho(e)
-
-   end do
- end subroutine
-
   subroutine solve_mfr(phys,geom) !eqn,prop,geom,dt,nit,ap,anb,b,phic)
     use mod_properties
     use mod_solver
@@ -210,12 +225,17 @@ contains
     type(phys_t) :: phys
     type(geometry_t) :: geom
     real :: pref
-    integer :: bg,p,c
+    integer :: bg,p,c,m
 
     p=phys%iphase
     do c=1,NCOMPONENTS
       if(.not. phys%phase(p)%COMPONENT_SET(c)) cycle
       associate(eqn=>phys%phase(p)%component(c)%mfr,prop=>phys%phase(p)%component(c)%prop,ap=>phys%ap,anb=>phys%anb,b=>phys%b,phic=>phys%phic,nit=>phys%nit,dt=>phys%dt)
+! update boundaries
+        do m=1,phys%nintf
+          call eqn%bcs(m)%coef(geom,eqn,prop)
+        enddo
+
         call calc_grad(eqn%phi,eqn%grad,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
 
         call calc_coef_mfr(eqn,ap,anb,b,geom,prop,dt)
@@ -238,10 +258,14 @@ contains
     type(phys_t) :: phys
     type(geometry_t) :: geom
     real :: pref
-    integer :: bg,n
+    integer :: bg,n,m
 
     n=phys%iphase
-    associate(eqn=>phys%scalar,prop=>phys%prop,ap=>phys%ap,anb=>phys%anb,b=>phys%b,phic=>phys%phic,nit=>phys%nit,dt=>phys%dt)
+    associate(eqn=>phys%scalar,prop=>phys%prop,ap=>phys%ap,anb=>phys%anb,b=>phys%b,phic=>phys%phic,nit=>phys%nit,dt=>phys%dt,alpha=>phys%phase(n)%vfr%phi)
+! update boundaries
+    do m=1,phys%nintf
+      call eqn%bcs(m)%coef(geom,eqn,prop)
+    enddo
 
     call calc_grad(eqn%phi,eqn%grad,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
 
@@ -262,18 +286,23 @@ contains
     real :: pref
     integer :: bg,n,m
 
-  do n=1,NPHASES
-    phys%iphase=n
-    associate(eqn=>phys%phase(n)%ndf,prop=>phys%phase(n)%prop,ap=>phys%ap,anb=>phys%anb,b=>phys%b,phic=>phys%phic,nit=>phys%nit,dt=>phys%dt)
 
+    phys%iphase=LIQUID
+    n=LIQUID
+    associate(eqn=>phys%phase(n)%ndf,prop=>phys%phase(n)%prop,ap=>phys%ap,anb=>phys%anb,b=>phys%b,phic=>phys%phic,nit=>phys%nit,dt=>phys%dt,alpha=>phys%phase(n)%vfr%phi)
+
+! update boundaries
+    do m=1,phys%nintf
+      call eqn%bcs(m)%coef(geom,eqn,prop)
+    enddo
     !call calc_grad(eqn%phi,eqn%grad,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
 
-    call calc_coef_ndf(eqn,ap,anb,b,geom,prop,dt)
+    call calc_coef_ndf(eqn,ap,anb,b,geom,prop,dt,phys%interaction(GAS,LIQUID)%scheme(NUCLEATION)%src,phys%interaction(GAS,LIQUID)%scheme(NUCLEATION)%sgn)
 
     call solve_gs(eqn%name,eqn%phi,ap,anb,b,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
 
     end associate
-  enddo
+
 
     ! calculate source terms due to interaction between phases
     do n=1,NPHASES
@@ -293,6 +322,10 @@ contains
     type(geometry_t) :: geom
     integer :: iphase,icomponent,ne,n
 
+
+    call update_mixture_properties(phys%phase,geom%ne)
+    return
+
     ne=geom%ne
   do n=1,NPHASES
     phys%iphase=n
@@ -301,7 +334,7 @@ contains
     ! calculate density
     if(iphase==GAS) then
       call calc_pvap(prop%pvap,prop%pvap_coef,phys%phase(n)%energy%t,ne)
-      call calc_rho_idea(prop%rho,prop%rgas,phys%uvwp%p,phys%phase(n)%energy%t,ne)
+      call calc_rho_idea(prop%rho,prop%rgas,phys%phase(MIXTURE)%uvwp%p,phys%phase(n)%energy%t,ne)
     else
       call calc_poly4(prop%rho,prop%rho_coef,phys%phase(n)%energy%t,ne)
     endif

@@ -11,15 +11,14 @@ module mod_ndf
 
 contains
 ! init ndf field
-  function construct_ndf(geom,mip,prop,vfr,vfr0) result(eqn)
+  function construct_ndf(geom,mip,prop,phase) result(eqn)
     implicit none
     type(ndf_t), pointer :: eqn
     type(properties_t) :: prop
     real, target, dimension(:) :: mip
     type(geometry_t) :: geom
-    integer :: ne,nbf,length
+    integer :: ne,nbf,length,phase
     type(bc_t), pointer :: bcp
-    real, pointer, dimension(:) :: vfr,vfr0
 
     allocate(eqn)
     length = geom%ne+geom%nbf
@@ -53,7 +52,7 @@ contains
 
   end subroutine
 ! make coef for ndf
-  subroutine calc_coef_ndf(eqn,ap,anb,b,geom,prop,dt)
+  subroutine calc_coef_ndf(eqn,ap,anb,b,geom,prop,dt,src_nuc,src_sgn)
     use mod_util
     use mod_properties
     implicit none
@@ -61,7 +60,7 @@ contains
     type(geometry_t) :: geom
     class(ndf_t) :: eqn
     integer :: e,enb,lfnb,idx,fg,fg_sgn,lf
-    real :: dt
+    real :: dt,src_nuc(*),src_sgn
     real :: d,f,fnb,sumf,vol,ap(*),anb(*),b(*),sumdefc
     real :: area,ap0,wt,tci,cpi,muip,ds,ds_p
     real, dimension(3) :: dr,norm,rip,rp,rpnb,ghi,drip,rp_p,rpnb_p,dr_p
@@ -105,7 +104,7 @@ contains
 
       ap0=prop%rho(e)*geom%vol(e)/dt
       ap(e)=ap(e)+ap0
-      b(e)=ap0*eqn%phi0(e)+sumf*eqn%phi(e)
+      b(e)=ap0*eqn%phi0(e)+sumf*eqn%phi(e)+src_nuc(e)*src_sgn
 
     end do
 
