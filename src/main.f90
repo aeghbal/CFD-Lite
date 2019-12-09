@@ -7,7 +7,7 @@ program cfdite
 
   character(len=180) :: filename,projPath
 
-  integer :: l,i
+  integer :: l,i,p
   type(geometry_t) :: geom
   type(phys_t) :: phys
   integer :: tstep,icoef,it
@@ -35,6 +35,7 @@ program cfdite
 
       ! solve continuity/mass
       call solve_vfr(phys,geom)
+      call solve_properties(phys,geom)
       ! solve momentum
       call solve_uvw(phys,geom)
       !
@@ -60,9 +61,12 @@ program cfdite
     write(*,'(A,i5,A)') '------------------------------------time step(',tstep,')'
 
     if(mod(tstep,10)==0) then
-      call write_vtubin(phys%phase(MIXTURE)%uvwp,geom,projPath,tstep)
-      call write_vtubin(phys%phase(GAS)%energy,geom,projPath,tstep)
-      call write_vtubin(phys%phase(LIQUID)%ndf,geom,projPath,tstep)
+      do p=0,NPHASES
+        if(p>0) call write_vtubin(phys%phase(p)%vfr,geom,phys%phase(p)%prop,projPath,tstep)
+        call write_vtubin(phys%phase(p)%uvwp,geom,phys%phase(p)%prop,projPath,tstep)
+        if(p>0)call write_vtubin(phys%phase(p)%energy,geom,phys%phase(p)%prop,projPath,tstep)
+      enddo
+      call write_vtubin(phys%phase(LIQUID)%ndf,geom,phys%phase(LIQUID)%prop,projPath,tstep)
     endif
 
   end do

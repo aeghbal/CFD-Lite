@@ -7,7 +7,7 @@ module mod_uvwp
     ! put any extra equation specific variables here
     real, allocatable, dimension(:) :: u,v,w,p
     real, allocatable, dimension(:) :: gu,gv,gw,gp,gpc
-    real, allocatable, dimension(:) :: mip,mip0
+    real, allocatable, dimension(:) :: mip,mip0,uip
     real, allocatable, dimension(:) :: u0,v0,w0
     real, allocatable, dimension(:) :: bu,bv,bw,d,dc
 
@@ -26,10 +26,12 @@ contains
     integer :: ne,nbf,length,phase
     type(bc_t), pointer :: bcp
     real :: dt
+    character(len=8) :: string
 
+    write(string,'(I8)') phase
     allocate(eqn)
     length = geom%ne+geom%nbf
-    eqn%name='uvwp'
+    eqn%name='uvwp_P'//trim(adjustl(string))
     allocate(eqn%u(length))
     allocate(eqn%v(length))
     allocate(eqn%w(length))
@@ -46,6 +48,7 @@ contains
     allocate(eqn%gpc(3*length))
     length=geom%nf
     allocate(eqn%mip(length))
+    allocate(eqn%uip(length))
     allocate(eqn%mip0(length))
     length=geom%ne
     allocate(eqn%bu(length))
@@ -58,7 +61,7 @@ contains
     eqn%u=0.
     eqn%v=0.
     eqn%w=0.
-    eqn%p=0.
+    eqn%p=1e5
     eqn%u0=0.
     eqn%v0=0.
     eqn%w0=0.
@@ -67,6 +70,8 @@ contains
     eqn%gv=0.
     eqn%gw=0.
     eqn%mip=0.
+    eqn%uip=0.
+    eqn%d=0.
     eqn%dc=0.
 
     allocate(eqn%bcs(geom%mg%nintf))
@@ -88,7 +93,7 @@ contains
     implicit none
     type(uvwp_t),pointer :: eqn
 
-    deallocate(eqn%bcs,eqn%u,eqn%v,eqn%w,eqn%p,eqn%u0,eqn%v0,eqn%w0,eqn%gp,eqn%gpc,eqn%mip,eqn%bu,eqn%bv,eqn%bw,eqn%d,eqn%dc)
+    deallocate(eqn%bcs,eqn%u,eqn%v,eqn%w,eqn%p,eqn%u0,eqn%v0,eqn%w0,eqn%gp,eqn%gpc,eqn%mip,eqn%bu,eqn%bv,eqn%bw,eqn%d,eqn%dc,eqn%uip)
     deallocate(eqn)
 
   end subroutine
@@ -203,7 +208,6 @@ contains
           f=-fg_sgn*eqn%mip(fg)
           ! upwind bias
           fnb=max(f,0.)
-          sumf=sumf+f
           ! diffusion term
           muip=(1.-wt)*prop%mu(e)*alpha(e)+wt*prop%mu(enb)*alpha(enb)
           d=muip*area/ds
@@ -228,8 +232,15 @@ contains
         anb(idx)=d+fnb
         ap(e)=ap(e)+d+fnb
       enddo
+      sumf=0.
+!      do idx=geom%ef2nb_idx(e),geom%ef2nb_idx(e+1)-1
+!        fg=geom%ef2nb(idx,2)
+!        fg_sgn = sgn(fg)
+!        fg=abs(fg)
+!        sumf=sumf-fg_sgn*eqn%mip(fg)
+!      enddo
 
-      ap0=alpha(e)*prop%rho(e)*geom%vol(e)/dt
+      ap0=prop%rho(e)*geom%vol(e)/dt*alpha(e)
       ap(e)=ap(e)+ap0
 
       eqn%bu(e)=ap0*eqn%u0(e)+sumf*eqn%u(e)-alpha(e)*geom%vol(e)*eqn%gp(3*e-2)+sumss(1)+sumdefc(1)+src_sgn*(src_mass(e)*eqn%u(e))!+sdc_mom(e)*abs(eqn%u(e)-u_bg(e))*(u_bg(e)-eqn%u(e))
@@ -274,7 +285,8 @@ contains
     ! calculate Rhie-Chow and SIMPLEC coef
     do e=1,geom%ne
       eqn%d(e) = 0.
-      if(alpha(e)==0) cycle
+      eqn%dc(e) = 0.
+      if(ap(e)<tiny(d) .or. alpha(e)<tiny(d)) cycle
       eqn%d(e)=geom%vol(e)/ap(e)*alpha(e)! Rhie-Chow
 
       eqn%dc(e)=ap(e)
@@ -368,7 +380,7 @@ contains
 
   end subroutine
 
-  subroutine update_mip(eqn,prop,geom,pc,ne,nf,nbf)
+  subroutine update_mip(eqn,prop,geom,pc)
     use mod_properties
     use mod_util
     implicit none
@@ -376,11 +388,14 @@ contains
     type(uvwp_t) :: eqn
     type(geometry_t) :: geom
     integer :: ne,nf,nbf
-    real, dimension(ne+nbf) :: pc
+    real, dimension(*) :: pc
     real :: dmip,rhoip,area,dip,wt
     real, dimension(3) :: norm,rp,rpnb,dr,rip
     integer :: e,fg,idx,enb,lfnb,lf,i,ibc,idx1
 
+    ne=geom%ne
+    nf=geom%nf
+    nbf=geom%nbf
     do fg=1,nf
       call get_idx(geom%mg%fine_lvl%s2g(fg),0,e,lf)
       idx=geom%ef2nb_idx(e)+lf-1
@@ -401,6 +416,7 @@ contains
       rhoip=(prop%rho(e)+prop%rho(enb))/2.
       dmip=rhoip*area*dip*(pc(enb)-pc(e))/dot_product(dr,norm)
       eqn%mip(fg)=eqn%mip(fg)-dmip
+      eqn%uip(fg)=eqn%uip(fg)-dmip/rhoip
 
     end do
 
@@ -425,27 +441,27 @@ contains
 
   end subroutine
 
-  subroutine update_uvwp(eqn,prop,geom,pc,ne,nf,nbf)
+  subroutine update_uvwp(eqn,prop,geom,pc,gpc)
     use mod_properties
     use mod_util
     implicit none
     type(properties_t) :: prop
     type(uvwp_t) :: eqn
     type(geometry_t) :: geom
-    integer :: ne,nf,nbf
-    real, dimension(ne+nbf) :: pc
+    real, dimension(geom%ne+geom%nbf) :: pc
+    real, dimension(3*geom%ne+3*geom%nbf) :: gpc
     real :: dmip,rhoip,area,dip,wt
     real, dimension(3) :: norm,rp,rpnb,dr,rip
     integer :: e,fg,idx,enb,lfnb,lf,i,ibc,idx1
 
-    do e=1,ne
+    do e=1,geom%ne
       eqn%p(e)= eqn%p(e)+pc(e)
-      eqn%gp(3*e-2:3*e)=eqn%gp(3*e-2:3*e)+eqn%gpc(3*e-2:3*e)
+      eqn%gp(3*e-2:3*e)=eqn%gp(3*e-2:3*e)+gpc(3*e-2:3*e)
       ! correct velocity field
       if(.false.) then
-      eqn%u(e)=eqn%u(e)-eqn%dc(e)*eqn%gpc(3*e-2)
-      eqn%v(e)=eqn%v(e)-eqn%dc(e)*eqn%gpc(3*e-1)
-      eqn%w(e)=eqn%w(e)-eqn%dc(e)*eqn%gpc(3*e)
+      eqn%u(e)=eqn%u(e)-eqn%dc(e)*gpc(3*e-2)
+      eqn%v(e)=eqn%v(e)-eqn%dc(e)*gpc(3*e-1)
+      eqn%w(e)=eqn%w(e)-eqn%dc(e)*gpc(3*e)
       endif
     end do
 
@@ -463,10 +479,10 @@ contains
     real :: wt,area,veln,dip,rhoip,dt,alpha_ip
     real, optional :: alpha(*)
     real, dimension(3) :: rp,rpnb,rip,norm,vec1,vec2,dr,velip,gpip,velip0
-    integer :: fg,e,lf,idx,enb,lfnb,i
+    integer :: fg,e,lf,idx,enb,lfnb,i,ibc
     logical :: lRhieChow
 
-    associate(mip=>eqn%mip,u=>eqn%u,v=>eqn%v,w=>eqn%w)
+    associate(mip=>eqn%mip,u=>eqn%u,v=>eqn%v,w=>eqn%w,uip=>eqn%uip)
 
     do fg=1,geom%nf
       call get_idx(geom%mg%fine_lvl%s2g(fg),0,e,lf)
@@ -491,20 +507,48 @@ contains
       rhoip=prop%rho(e)*(1.-wt)+prop%rho(enb)*wt
 
       mip(fg)=dot_product(velip,norm)*rhoip*area*alpha_ip
+      uip(fg)=dot_product(velip,norm)*area
 
       ! Rhie-Chow
       if(lRhieChow) then ! internal faces
         dr=rpnb-rp
         gpip =(1.-wt)*eqn%gp(3*e-2:3*e)+wt*eqn%gp(3*enb-2:3*enb)
-        dip=(1.-wt)*eqn%d(e)+wt*eqn%d(enb)
+        dip=(1.-wt)*eqn%d(e)+wt*eqn%d(enb)! this already has the alpha_ip effect
         vec1=[eqn%u0(e),eqn%v0(e),eqn%w0(e)]
         vec2=[eqn%u0(enb),eqn%v0(enb),eqn%w0(enb)]
         velip0= (1.-wt)*vec1+wt*vec2
 
-        mip(fg) = mip(fg)-alpha_ip*rhoip*area*dip/dot_product(dr,norm)*(eqn%p(enb) - eqn%p(e) - dot_product(gpip,dr))  &
-                         -alpha_ip*rhoip/dt*dip*(eqn%mip0(fg)-dot_product(velip0,norm)*rhoip*area)
+        mip(fg) = mip(fg)-rhoip*area*dip/dot_product(dr,norm)*(eqn%p(enb) - eqn%p(e) - dot_product(gpip,dr))  &
+                         -rhoip/dt*dip*(eqn%mip0(fg)-dot_product(velip0,norm)*rhoip*area)
+        uip(fg) = uip(fg)-area*dip/dot_product(dr,norm)*(eqn%p(enb) - eqn%p(e) - dot_product(gpip,dr))  !&
+                         !-rhoip/dt*dip*(eqn%mip0(fg)-dot_product(velip0,norm)*rhoip*area)
       endif
 
+    end do
+
+     do ibc=1,size(eqn%bcs)
+      do enb=eqn%bcs(ibc)%esec(1),eqn%bcs(ibc)%esec(2)
+        call get_idx(abs(geom%mg%fine_lvl%bs(enb)),0,e,lf)
+        idx =geom%ef2nb_idx(e)+lf-1
+        fg = geom%ef2nb(idx,2)! always outward on boundary
+        i=3*fg-2
+        area=sqrt(geom%aip(i)**2+geom%aip(i+1)**2+geom%aip(i+2)**2)
+        norm=geom%aip(i:i+2)/area
+        rip=geom%rip(i:i+2)
+        dr=[geom%xc(enb)-geom%xc(e),geom%yc(enb)-geom%yc(e),geom%zc(enb)-geom%zc(e)]
+        select case(trim(eqn%bcs(ibc)%bc_type))
+          case('dirichlet')
+
+            velip=[u(enb),v(enb),w(enb)]
+            alpha_ip=alpha(enb)
+            rhoip=prop%rho(enb)
+
+            mip(fg)=dot_product(velip,norm)*rhoip*area*alpha_ip
+            uip(fg)=dot_product(velip,norm)*area
+          case('zero_flux')
+
+        end select
+      end do
     end do
     end associate
 

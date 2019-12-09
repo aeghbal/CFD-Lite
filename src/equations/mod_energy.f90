@@ -19,10 +19,12 @@ contains
     type(geometry_t) :: geom
     integer :: ne,nbf,length,phase
     type(bc_t), pointer :: bcp
+    character(len=8) :: string
 
+    write(string,'(I8)') phase
     allocate(eqn)
     length = geom%ne+geom%nbf
-    eqn%name='energy'
+    eqn%name='energy_P'//trim(adjustl(string))
     allocate(eqn%phi(length))
     allocate(eqn%phi0(length))
     allocate(eqn%grad(3*length))
@@ -32,7 +34,7 @@ contains
 ! initialize
     eqn%t=273.
     if(phase==GAS) then
-      eqn%phi=eqn%t*prop%cp
+      eqn%phi=eqn%t*prop%cp+2230! latent heat of vaporization
     else
       eqn%phi=eqn%t*prop%cp
     endif
@@ -124,7 +126,7 @@ contains
         f=-fg_sgn*eqn%mip(fg)
         ! upwind bias
         fnb=max(f,0.)
-        sumf=sumf+f
+
         ! diffusion term
         tci=(1.-wt)*prop%tc(e)+wt*prop%tc(enb)
         cpi=(1.-wt)*prop%cp(e)+wt*prop%cp(enb)
@@ -137,6 +139,13 @@ contains
         anb(idx)=d+fnb
         ap(e)=ap(e)+d+fnb
       enddo
+      sumf=0.
+!      do idx=geom%ef2nb_idx(e),geom%ef2nb_idx(e+1)-1
+!        fg=geom%ef2nb(idx,2)
+!        fg_sgn = sgn(fg)
+!        fg=abs(fg)
+!        sumf=sumf-fg_sgn*eqn%mip(fg)
+!      enddo
 
       ap0=prop%rho(e)*geom%vol(e)/dt*alpha(e)
       ap(e)=ap(e)+ap0

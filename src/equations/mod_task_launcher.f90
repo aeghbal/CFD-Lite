@@ -70,7 +70,7 @@ contains
     end associate
   enddo
     ! calculate mixture momentum in preparation for pressure solution
-    call calc_mixture_field(phys%phase(MIXTURE)%uvwp,phys%phase,geom%ne,geom%nf)
+    call calc_mixture_field(phys%phase(MIXTURE)%uvwp,phys%phase,geom)
 
     ! calculate source terms due to interaction between phases
     do n=1,NPHASES
@@ -107,19 +107,23 @@ contains
       call set_a_0(phic,geom%ne+geom%nbf)
       call solve_gs('pc',phic,ap,anb,b,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
 
-      pref=1e5!phic(1)! if closed system
+      pref=phic(1)! if closed system
       call adjust_pc(phic,pref,geom)
       call calc_grad(phic,eqn%gpc,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
-      call update_uvwp(eqn,prop,geom,phic,geom%ne,geom%nf,geom%nbf)
-      call update_mip(eqn,prop,geom,phic,geom%ne,geom%nf,geom%nbf)
-
-      ! update gas mip as well
-      !phys%phase(GAS)%uvwp%p=phys%phase(GAS)%uvwp%p
-      call update_mip(phys%phase(GAS)%uvwp,phys%phase(GAS)%prop,geom,phic,geom%ne,geom%nf,geom%nbf)
-      call update_mip(phys%phase(LIQUID)%uvwp,phys%phase(LIQUID)%prop,geom,phic,geom%ne,geom%nf,geom%nbf)
+      call update_uvwp(eqn,prop,geom,phic,eqn%gpc)
+      call update_mip(eqn,prop,geom,phic)
 
     end associate
 
+    ! update gas mip as well
+    phys%phase(GAS)%uvwp%p=phys%phase(MIXTURE)%uvwp%p
+    phys%phase(GAS)%uvwp%gp=phys%phase(MIXTURE)%uvwp%gp
+    call update_mip(phys%phase(GAS)%uvwp,phys%phase(GAS)%prop,geom,phys%phic)
+    phys%phase(LIQUID)%uvwp%p=phys%phase(MIXTURE)%uvwp%p
+    phys%phase(LIQUID)%uvwp%gp=phys%phase(MIXTURE)%uvwp%gp
+    call update_mip(phys%phase(LIQUID)%uvwp,phys%phase(LIQUID)%prop,geom,phys%phic)
+    ! calculate partial pressure
+    ! call calc_pvap
   end subroutine
 
   subroutine solve_energy(phys,geom)
@@ -182,13 +186,13 @@ contains
     ! solve phase continuity equations
     do n=1,NPHASES
       phys%iphase=n
-      if(n==GAS) then
-        associate(eqn=>phys%phase(n)%vfr,prop=>phys%phase(n)%prop,ap=>phys%ap,anb=>phys%anb,b=>phys%b,phic=>phys%phic,nit=>phys%nit,dt=>phys%dt,alpha=>phys%phase(n)%vfr%phi)
-
+      associate(eqn=>phys%phase(n)%vfr,prop=>phys%phase(n)%prop,ap=>phys%ap,anb=>phys%anb,b=>phys%b,phic=>phys%phic,nit=>phys%nit,dt=>phys%dt,alpha=>phys%phase(n)%vfr%phi)
 ! update boundaries
-        do m=1,phys%nintf
-          call eqn%bcs(m)%coef(geom,eqn,prop)
-        enddo
+      do m=1,phys%nintf
+        call eqn%bcs(m)%coef(geom,eqn,prop)
+      enddo
+
+      if(n==GAS) then
 
         call calc_grad(eqn%phi,eqn%grad,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
 
@@ -196,13 +200,16 @@ contains
 
         call solve_gs(eqn%name,eqn%phi,ap,anb,b,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
 
-        end associate
+        call rescale_vfr(eqn%phi,geom%ne)
+
       elseif(n==LIQUID) then
 
         call calc_algebraic_vfr(phys%phase,n,geom%ne)
 
       endif
+      end associate
     enddo
+
     call calc_phase_mfr(phys%phase,geom)
 
     ! calculate source terms due to interaction between phases
@@ -324,6 +331,9 @@ contains
 
 
     call update_mixture_properties(phys%phase,geom%ne)
+    associate(prop=>phys%phase(GAS)%prop)
+      call calc_pvap(prop%pvap,prop%pvap_coef,phys%phase(GAS)%energy%t,ne)
+    end associate
     return
 
     ne=geom%ne

@@ -274,14 +274,16 @@ return
       end do
     end subroutine
 
-    subroutine calc_mixture_field(mixture_eqn,phase,ne,nf)
+    subroutine calc_mixture_field(mixture_eqn,phase,geom)
       type(phase_t) :: phase(0:NPHASES)
+      type(geometry_t) :: geom
       class(equation_t) :: mixture_eqn
-      integer :: p,ne,e,f,nf
+      integer :: p,e,f,enb,lf,idx,lfnb
+      real :: r
 
       select type(mixture_eqn)
         type is(uvwp_t)
-          do e=1,ne
+          do e=1,geom%ne
             mixture_eqn%u(e)=0.
             mixture_eqn%v(e)=0.
             mixture_eqn%w(e)=0.
@@ -290,18 +292,18 @@ return
               mixture_eqn%u(e)=mixture_eqn%u(e)+phase(p)%vfr%mfr(e)*phase(p)%uvwp%u(e)
               mixture_eqn%v(e)=mixture_eqn%v(e)+phase(p)%vfr%mfr(e)*phase(p)%uvwp%v(e)
               mixture_eqn%w(e)=mixture_eqn%w(e)+phase(p)%vfr%mfr(e)*phase(p)%uvwp%w(e)
-              mixture_eqn%dc(e)=mixture_eqn%dc(e)+phase(p)%uvwp%dc(e)! already has vfr in it
+              mixture_eqn%dc(e)=mixture_eqn%dc(e)+phase(p)%vfr%mfr(e)*phase(p)%uvwp%dc(e)
             enddo
           enddo
 
-          do f=1,nf
+          do f=1,geom%nf
             mixture_eqn%mip(f)=0.
             do p=1,NPHASES
-              mixture_eqn%mip(f)=mixture_eqn%mip(f)+phase(p)%uvwp%mip(f)
+              mixture_eqn%mip(f)=mixture_eqn%mip(f)+phase(p)%vfr%mfr(e)*phase(GAS)%uvwp%mip(f)
             enddo
           end do
         class default
-          do e=1,ne
+          do e=1,geom%ne
             mixture_eqn%phi(e)=0.
             do p=1,NPHASES
               mixture_eqn%phi(e)=mixture_eqn%phi(e)+phase(p)%vfr%mfr(e)*phase(p)%uvwp%phi(e)
@@ -310,6 +312,5 @@ return
       end select
 
     end subroutine
-
 
 end module mod_multiphase

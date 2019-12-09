@@ -14,7 +14,7 @@ module mod_physics
   type :: phys_t
     ! temporal properties
     real :: dt=0.01
-    integer :: ntstep=100
+    integer :: ntstep=30
     integer :: ncoef=3
     integer :: nit=100
     !
@@ -49,11 +49,16 @@ module mod_physics
     phys%nintf=geom%mg%nintf
 
 ! initialize properties
+    ! set phase component set
+    phys%phase(GAS)%COMPONENT_SET(WAT_VAP)=.true.
+    phys%phase(LIQUID)%COMPONENT_SET(WAT_LIQ)=.true.
+
     call init_properties(phys%phase(GAS)%prop,WAT_VAP,geom%ne)
     call init_properties(phys%phase(LIQUID)%prop,WAT_LIQ,geom%ne)
     call init_properties(phys%phase(MIXTURE)%prop,0,geom%ne)! allocate mixture
+
 ! construct equations
-    phys%phase(MIXTURE)%uvwp => construct_uvwp(geom,phys%phase(MIXTURE)%prop,phys%dt,phase)
+    phys%phase(MIXTURE)%uvwp => construct_uvwp(geom,phys%phase(MIXTURE)%prop,phys%dt,MIXTURE)
 
     do phase=1,NPHASES
       phys%phase(phase)%COMPONENT_SET=.false.
@@ -64,9 +69,9 @@ module mod_physics
 
       phys%phase(phase)%energy => construct_energy(geom,phys%phase(phase)%uvwp%mip,phys%phase(phase)%prop,phase)
     enddo
-    phys%phase(LIQUID)%ndf => construct_ndf(geom,phys%phase(LIQUID)%uvwp%mip,phys%phase(LIQUID)%prop,phase)
+    phys%phase(LIQUID)%ndf => construct_ndf(geom,phys%phase(LIQUID)%uvwp%mip,phys%phase(LIQUID)%prop,LIQUID)
 
-    ! construct source terms for interaction between phases
+! construct source terms for interaction between phases
     call update_mixture_properties(phys%phase,geom%ne)! initialize mixture
     do phase=1,NPHASES
       do phase2=phase+1,NPHASES
@@ -88,10 +93,6 @@ module mod_physics
         end do
       end do
     end do
-    ! set phase component set
-    phys%phase(GAS)%COMPONENT_SET(WAT_VAP)=.true.
-    phys%phase(LIQUID)%COMPONENT_SET(WAT_LIQ)=.true.
-!
   end subroutine
 
   subroutine destroy_phys(phys)

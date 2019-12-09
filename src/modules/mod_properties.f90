@@ -101,6 +101,7 @@ module mod_properties
         prop%sigma=0.060
         prop%mw=0.018
         prop%rgas=461
+        prop%pvap_coef = [8.1,1770.,240.]
     end select
     return
 

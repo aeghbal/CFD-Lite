@@ -3,7 +3,7 @@ module mod_vtu_output
 !
 ! write_vtubin
 !
-       subroutine write_vtubin(eqn,geom,projPath,iout)
+       subroutine write_vtubin(eqn,geom,prop,projPath,iout)
        use mod_eqn_setup
        use mod_cell
        use mod_util
@@ -12,6 +12,7 @@ module mod_vtu_output
        character(len=180) :: vtu_filename,projPath,outputPath
        type(geometry_t) :: geom
        class(equation_t) :: eqn
+       type(properties_t) :: prop
 
        integer :: iout,file_unit
        integer :: alength,anlength,i,j,k,l,m,n,ifile,ivar,type_no
@@ -35,10 +36,10 @@ module mod_vtu_output
 ! The VTU file for cell data
 
       oper = 'pre-cell'
-      call vtu_data(oper,eqn,geom,file_unit,nbytes,nbytes2)
+      call vtu_data(oper,eqn,geom,prop,file_unit,nbytes,nbytes2)
 
       oper = 'write-cldata'
-      call vtu_data(oper,eqn,geom,file_unit,nbytes,nbytes2)
+      call vtu_data(oper,eqn,geom,prop,file_unit,nbytes,nbytes2)
 
       close(file_unit)
 
@@ -49,7 +50,7 @@ module mod_vtu_output
 !
 ! vtu_data
 !
-       subroutine vtu_data(oper,eqn,geom,file_unit,nbytes,nbytes2)
+       subroutine vtu_data(oper,eqn,geom,prop,file_unit,nbytes,nbytes2)
        use mod_cell
        use mod_util
        use mod_eqn_setup
@@ -62,6 +63,7 @@ module mod_vtu_output
 
        type(geometry_t) :: geom
        class(equation_t), target :: eqn
+       type(properties_t),target :: prop
        integer :: file_unit
 
 
@@ -101,7 +103,7 @@ module mod_vtu_output
 ! Get output variable list
     select type(eqn)
       type is(uvwp_t)
-        nvarlist=6
+        nvarlist=7
         allocate(phi(nvarlist))
         allocate (varname(nvarlist))
         allocate (vardimension(nvarlist))
@@ -121,6 +123,9 @@ module mod_vtu_output
           enddo
         enddo
         phi(6)%p=>eqn%dc;varname(6)='mip';vardimension(6)=1
+        if(trim(eqn%name)=='uvwp_P2') then
+          phi(7)%p=>prop%pvap;varname(7)='pvap';vardimension(7)=1
+        end if
       type is(energy_t)
         nvarlist=4
         allocate(phi(nvarlist))
@@ -137,7 +142,8 @@ module mod_vtu_output
         allocate (varname(nvarlist))
         allocate (vardimension(nvarlist))
         allocate(vtkarraytype(nvarlist))
-        phi(1)%p=>eqn%phi;varname(1)=eqn%name;vardimension(1)=1
+        i=index(eqn%name,'_P')
+        phi(1)%p=>eqn%phi;varname(1)=eqn%name(1:i-1);vardimension(1)=1
         phi(2)%p=>eqn%grad;varname(2)='grad'//trim(eqn%name);vardimension(2)=3
     end select
     vtkarraytype(1:nvarlist)='Float64'

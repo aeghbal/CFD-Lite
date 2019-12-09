@@ -19,10 +19,12 @@ contains
     type(geometry_t) :: geom
     integer :: ne,nbf,length,phase
     type(bc_t), pointer :: bcp
+    character(len=8) :: string
 
+    write(string,'(I8)') phase
     allocate(eqn)
     length = geom%ne+geom%nbf
-    eqn%name='ndf'
+    eqn%name='ndf_P'//trim(adjustl(string))
     allocate(eqn%phi(length))
     allocate(eqn%phi0(length))
     allocate(eqn%grad(3*length))
