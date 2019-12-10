@@ -5,6 +5,7 @@ module mod_mfr
   type, extends(equation_t) :: mfr_t
      real, pointer, dimension(:) :: mip
      real, allocatable, dimension(:) :: vfr
+     real, allocatable, dimension(:) :: p_partial
    contains
     procedure :: calc_coef_mfr
   end type
@@ -27,6 +28,7 @@ contains
     allocate(eqn%phi0(length))
     allocate(eqn%grad(3*length))
     allocate(eqn%vfr(length))
+    allocate(eqn%p_partial(length))
     eqn%mip=>mip
 ! initialize
     eqn%phi=0.
@@ -49,7 +51,7 @@ contains
     implicit none
     type(mfr_t),pointer :: eqn
 
-    deallocate(eqn%bcs,eqn%grad,eqn%phi0,eqn%phi)
+    deallocate(eqn%bcs,eqn%grad,eqn%phi0,eqn%phi,eqn%vfr,eqn%p_partial)
     deallocate(eqn)
 
   end subroutine

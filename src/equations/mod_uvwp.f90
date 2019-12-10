@@ -169,9 +169,9 @@ contains
     type(geometry_t) :: geom
     class(uvwp_t) :: eqn
     integer :: e,enb,lfnb,idx,fg,fg_sgn,lf
-    real :: dt,ap(geom%ne),anb(geom%nf*2-geom%nbf)
+    real :: dt,ap(geom%ne),anb(geom%nf*2-geom%nbf),alpha_ip
     real, dimension(*) :: src_mass,sdc_mom,alpha
-    real :: d,f,fnb,sumf,vol,wt,muip,ds,ds_p,area,ap0,src_sgn
+    real :: d,f,fnb,sumf,vol,wt,muip,ds,ds_p,area,ap0,src_sgn,dphi,dphic,rd,beta
     real, dimension(3) :: dr,norm,rip,vrel,vbnc,gip,rp,rpnb,rp_p,rpnb_p,sumss,sumdefc,dr_p,drip
     integer :: i,ibc,m
 
@@ -179,6 +179,7 @@ contains
 
       rp=[geom%xc(e),geom%yc(e),geom%zc(e)]
       ap(e)=0.
+      eqn%d(e)=0.
       sumf=0.;sumss=0.;sumdefc=0.
       do idx=geom%ef2nb_idx(e),geom%ef2nb_idx(e+1)-1
         anb(idx)=0.
@@ -209,7 +210,9 @@ contains
           ! upwind bias
           fnb=max(f,0.)
           ! diffusion term
-          muip=(1.-wt)*prop%mu(e)*alpha(e)+wt*prop%mu(enb)*alpha(enb)
+          alpha_ip=(1.-wt)*alpha(e)+wt*alpha(enb)
+
+          muip=(1.-wt)*prop%mu(e)+wt*prop%mu(enb)
           d=muip*area/ds
 
           ! secondary stress term
@@ -217,20 +220,46 @@ contains
             gip(1)=(1.-wt)*eqn%gu(3*e-3+m)+wt*eqn%gu(3*enb-3+m)
             gip(2)=(1.-wt)*eqn%gv(3*e-3+m)+wt*eqn%gv(3*enb-3+m)
             gip(3)=(1.-wt)*eqn%gw(3*e-3+m)+wt*eqn%gw(3*enb-3+m)
-            sumss(m)=sumss(m)+muip*area*dot_product(gip,dr)/ds
+            sumss(m)=sumss(m)+alpha_ip*muip*area*dot_product(gip,dr)/ds
           enddo
-          ! Deferred correction of real diffusion
+          ! Deferred correction of diffusion and advection(TVD)
           gip=(1.-wt)*eqn%gu(3*e-2:3*e)+wt*eqn%gu(3*enb-2:3*enb)
-          sumdefc(1)=sumdefc(1)+muip*area*(dot_product(gip,dr_p)/ds_p-dot_product(gip,dr)/ds)
+          sumdefc(1)=sumdefc(1)+alpha_ip*muip*area*(dot_product(gip,dr_p)/ds_p-dot_product(gip,dr)/ds)
+
+!          dphi=rsgn(f)*dot_product(gip,-dr)
+!          dphic=rsgn(f)*(eqn%u(e)-eqn%u(enb))
+!          if(getexpnt(dphic)-getexpnt(tiny(d))>1.) then
+!            rd=2*dphi/dphic-1.
+!            beta=(rd+abs(rd))/(1.+abs(rd))
+!            sumdefc(1)=sumdefc(1)+alpha_ip*0.5*f*beta*dphic
+!          endif
+
           gip=(1.-wt)*eqn%gv(3*e-2:3*e)+wt*eqn%gv(3*enb-2:3*enb)
-          sumdefc(2)=sumdefc(2)+muip*area*(dot_product(gip,dr_p)/ds_p-dot_product(gip,dr)/ds)
+          sumdefc(2)=sumdefc(2)+alpha_ip*muip*area*(dot_product(gip,dr_p)/ds_p-dot_product(gip,dr)/ds)
+
+!          dphi=rsgn(f)*dot_product(gip,-dr)
+!          dphic=rsgn(f)*(eqn%v(e)-eqn%v(enb))
+!          if(getexpnt(dphic)-getexpnt(tiny(d))>1.) then
+!            rd=2*dphi/dphic-1.
+!            beta=(rd+abs(rd))/(1.+abs(rd))
+!            sumdefc(2)=sumdefc(2)+alpha_ip*0.5*f*beta*dphic
+!          endif
+
           gip=(1.-wt)*eqn%gw(3*e-2:3*e)+wt*eqn%gw(3*enb-2:3*enb)
-          sumdefc(3)=sumdefc(3)+muip*area*(dot_product(gip,dr_p)/ds_p-dot_product(gip,dr)/ds)
+          sumdefc(3)=sumdefc(3)+alpha_ip*muip*area*(dot_product(gip,dr_p)/ds_p-dot_product(gip,dr)/ds)
+
+!          dphi=rsgn(f)*dot_product(gip,-dr)
+!          dphic=rsgn(f)*(eqn%w(e)-eqn%w(enb))
+!          if(getexpnt(dphic)-getexpnt(tiny(d))>1.) then
+!            rd=2*dphi/dphic-1.
+!            beta=(rd+abs(rd))/(1.+abs(rd))
+!            sumdefc(3)=sumdefc(3)+alpha_ip*0.5*f*beta*dphic
+!          endif
 
         endif
 
-        anb(idx)=d+fnb
-        ap(e)=ap(e)+d+fnb
+        anb(idx)=(d+fnb)*alpha_ip
+        ap(e)=ap(e)+anb(idx)
       enddo
       sumf=0.
 !      do idx=geom%ef2nb_idx(e),geom%ef2nb_idx(e+1)-1
@@ -264,42 +293,43 @@ contains
         select case(trim(eqn%bcs(ibc)%bc_type))
           case('dirichlet')
             f=0.
-            d=prop%mu(e)*area/ds*alpha(e)
+            d=prop%mu(e)*area/ds!*alpha(e)
             vbnc=[eqn%u(enb),eqn%v(enb),eqn%w(enb)]
             vrel=[eqn%u(e),eqn%v(e),eqn%w(e)]
             vrel=vrel-dot_product(vrel,norm)*norm! transverse velocity
             vrel=vbnc-vrel
 
-            eqn%bu(e)=eqn%bu(e)+d*vrel(1)-d*eqn%u(e)
-            eqn%bv(e)=eqn%bv(e)+d*vrel(2)-d*eqn%v(e)
-            eqn%bw(e)=eqn%bw(e)+d*vrel(3)-d*eqn%w(e)
+            eqn%bu(e)=eqn%bu(e)+d*(vrel(1)-eqn%u(e))*alpha(e)
+            eqn%bv(e)=eqn%bv(e)+d*(vrel(2)-eqn%v(e))*alpha(e)
+            eqn%bw(e)=eqn%bw(e)+d*(vrel(3)-eqn%w(e))*alpha(e)
           case('zero_flux')
             f=0.
-            d=prop%mu(e)*area/ds*alpha(e)
+            d=prop%mu(e)*area/ds!*alpha(e)
         end select
-        ap(e)=ap(e)+d+f
-        anb(idx)=anb(idx)+d+f
+        ap(e)=ap(e)+(d+f)*alpha(e)
+        anb(idx)=anb(idx)+(d+f)*alpha(e)
       end do
     end do
 
-    ! calculate Rhie-Chow and SIMPLEC coef
     do e=1,geom%ne
-      eqn%d(e) = 0.
-      eqn%dc(e) = 0.
-      if(ap(e)<tiny(d) .or. alpha(e)<tiny(d)) cycle
-      eqn%d(e)=geom%vol(e)/ap(e)*alpha(e)! Rhie-Chow
-
-      eqn%dc(e)=ap(e)
-      do idx=geom%ef2nb_idx(e),geom%ef2nb_idx(e+1)-1
-        eqn%dc(e)=eqn%dc(e)-anb(idx)
-      enddo
-      eqn%dc(e)=geom%vol(e)/eqn%dc(e)*alpha(e)! SIMPLEC
+     ! calculate Rhie-Chow
+      eqn%d(e)=geom%vol(e)/ap(e)*alpha(e)
+    ! calculate SIMPLEC coef
+      eqn%dc(e)=dt/prop%rho(e)
+!      if(getexpnt(ap(e))-getexpnt(tiny(d))<3) then
+!        ap(e)=real(geom%ef2nb_idx(e+1)-geom%ef2nb_idx(e))
+!        do idx=geom%ef2nb_idx(e),geom%ef2nb_idx(e+1)-1
+!          anb(idx)=1.
+!        end do
+!        eqn%bu(e)=0.
+!        eqn%bv(e)=0.
+!        eqn%bw(e)=0.
+!      end if
     enddo
-
   end subroutine
 
 ! make coef for uvwp
-  subroutine calc_coef_p(eqn,ap,anb,b,geom,prop)
+  subroutine calc_coef_p(eqn,ap,anb,b,geom,prop,dt)
     use mod_util
     use mod_properties
     implicit none
@@ -350,7 +380,8 @@ contains
         anb(idx)=d
         ap(e)=ap(e)+d
       enddo
-      b(e)=sumf
+
+      b(e)=sumf!-(prop%rho(e)-prop%rho0(e))/dt*geom%vol(e)
 
     end do
     ! set coefficients for boundary condition
@@ -412,8 +443,8 @@ contains
       call vec_weight(wt,rip,rp,rpnb)
 
       dmip=0.
-      dip=(1.-wt)*eqn%dc(e)+wt*eqn%dc(enb)
       rhoip=(prop%rho(e)+prop%rho(enb))/2.
+      dip=(1.-wt)*eqn%dc(e)+wt*eqn%dc(enb)
       dmip=rhoip*area*dip*(pc(enb)-pc(e))/dot_product(dr,norm)
       eqn%mip(fg)=eqn%mip(fg)-dmip
       eqn%uip(fg)=eqn%uip(fg)-dmip/rhoip
@@ -438,6 +469,31 @@ contains
         end select
       end do
     end do
+
+  end subroutine
+
+
+  subroutine update_uvw(eqn,prop,geom,pc,gpc)
+    use mod_properties
+    use mod_util
+    implicit none
+    type(properties_t) :: prop
+    type(uvwp_t) :: eqn
+    type(geometry_t) :: geom
+    real, dimension(geom%ne+geom%nbf) :: pc
+    real, dimension(3*geom%ne+3*geom%nbf) :: gpc
+    real :: dmip,rhoip,area,dip,wt
+    real, dimension(3) :: norm,rp,rpnb,dr,rip
+    integer :: e,fg,idx,enb,lfnb,lf,i,ibc,idx1
+
+    do e=1,geom%ne
+      ! correct velocity field
+      eqn%u(e)=eqn%u(e)-eqn%dc(e)*gpc(3*e-2)
+      eqn%v(e)=eqn%v(e)-eqn%dc(e)*gpc(3*e-1)
+      eqn%w(e)=eqn%w(e)-eqn%dc(e)*gpc(3*e)
+    end do
+
+    !call upate_mip(eqn,prop,geom,pc,ne,nf,nbf)
 
   end subroutine
 
@@ -502,11 +558,9 @@ contains
       vec1=[u(e),v(e),w(e)]
       vec2=[u(enb),v(enb),w(enb)]
       velip= (1.-wt)*vec1+wt*vec2
-      alpha_ip=1.
-      if(present(alpha)) alpha_ip=(1.-wt)*alpha(e)+wt*alpha(enb)
       rhoip=prop%rho(e)*(1.-wt)+prop%rho(enb)*wt
 
-      mip(fg)=dot_product(velip,norm)*rhoip*area*alpha_ip
+      mip(fg)=dot_product(velip,norm)*rhoip*area
       uip(fg)=dot_product(velip,norm)*area
 
       ! Rhie-Chow
@@ -540,10 +594,9 @@ contains
           case('dirichlet')
 
             velip=[u(enb),v(enb),w(enb)]
-            alpha_ip=alpha(enb)
             rhoip=prop%rho(enb)
 
-            mip(fg)=dot_product(velip,norm)*rhoip*area*alpha_ip
+            mip(fg)=dot_product(velip,norm)*rhoip*area
             uip(fg)=dot_product(velip,norm)*area
           case('zero_flux')
 

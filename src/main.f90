@@ -33,25 +33,25 @@ program cfdite
   do tstep=1,phys%ntstep
     do icoef=1,phys%ncoef
 
-      ! solve continuity/mass
-      call solve_vfr(phys,geom)
-      call solve_properties(phys,geom)
       ! solve momentum
       call solve_uvw(phys,geom)
       !
       call solve_pressure(phys,geom)
       ! update properties
       !call update_properties(phys,geom)
+      ! solve continuity/mass
+      call solve_vfr(phys,geom)
+      call solve_properties(phys,geom)
 
       if(icoef>1) then
         ! solve energy
         call solve_energy(phys,geom)
         ! solve population balance eqn
-        call solve_ndf(phys,geom)
+        !call solve_ndf(phys,geom)
         ! solve mass fraction
         !call solve_mfr(phys,geom)
         ! update properties
-        call solve_properties(phys,geom)
+        !call solve_properties(phys,geom)
 
       endif
     end do

@@ -14,7 +14,7 @@ module mod_physics
   type :: phys_t
     ! temporal properties
     real :: dt=0.01
-    integer :: ntstep=30
+    integer :: ntstep=1000
     integer :: ncoef=3
     integer :: nit=100
     !
@@ -65,7 +65,7 @@ module mod_physics
 
       phys%phase(phase)%uvwp => construct_uvwp(geom,phys%phase(phase)%prop,phys%dt,phase)
 
-      phys%phase(phase)%vfr => construct_vfr(geom,phys%phase(phase)%uvwp%mip,phys%phase(phase)%prop,phase)
+      phys%phase(phase)%vfr => construct_vfr(geom,phys%phase(phase)%uvwp%mip,phys%phase(phase)%uvwp%uip,phys%phase(phase)%prop,phase)
 
       phys%phase(phase)%energy => construct_energy(geom,phys%phase(phase)%uvwp%mip,phys%phase(phase)%prop,phase)
     enddo
@@ -73,6 +73,8 @@ module mod_physics
 
 ! construct source terms for interaction between phases
     call update_mixture_properties(phys%phase,geom%ne)! initialize mixture
+    phys%phase(MIXTURE)%prop%rho0=phys%phase(MIXTURE)%prop%rho
+
     do phase=1,NPHASES
       do phase2=phase+1,NPHASES
         phys%interaction(phase,phase2)%mixture=>phys%phase(0)
@@ -117,6 +119,7 @@ module mod_physics
       phys%phase(p)%vfr%phi0=phys%phase(p)%vfr%phi
     enddo
     phys%phase(LIQUID)%ndf%phi0=phys%phase(LIQUID)%ndf%phi
+    phys%phase(MIXTURE)%prop%rho0=phys%phase(MIXTURE)%prop%rho
 
   end subroutine
 

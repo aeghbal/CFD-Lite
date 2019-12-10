@@ -123,7 +123,9 @@ module mod_vtu_output
           enddo
         enddo
         phi(6)%p=>eqn%dc;varname(6)='mip';vardimension(6)=1
-        if(trim(eqn%name)=='uvwp_P2') then
+        if(trim(eqn%name)=='uvwp_P0') then
+          phi(7)%p=>eqn%p;varname(7)='pvap';vardimension(7)=1
+        else
           phi(7)%p=>prop%pvap;varname(7)='pvap';vardimension(7)=1
         end if
       type is(energy_t)

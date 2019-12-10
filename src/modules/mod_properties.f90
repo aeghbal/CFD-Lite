@@ -79,6 +79,8 @@ module mod_properties
     integer :: icomponent,ne
     !
     allocate(prop%rho(ne))
+    allocate(prop%rho0(ne))
+
     allocate(prop%mu(ne))
     allocate(prop%cp(ne))
     allocate(prop%tc(ne))
@@ -87,14 +89,17 @@ module mod_properties
     select case(icomponent)
       case(WAT_LIQ)
         prop%rho=997
+        prop%rho0=prop%rho
         prop%mu=0.001
         prop%cp=4200
         prop%tc=0.6
         prop%sigma=0.060
         prop%mw=0.018
         prop%rgas=461
+        prop%pvap_coef = [8.1,1770.,240.]
       case(WAT_VAP)
         prop%rho=0.6
+        prop%rho0=prop%rho
         prop%mu=1e-5
         prop%cp=2000
         prop%tc=0.03

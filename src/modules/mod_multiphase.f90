@@ -279,7 +279,7 @@ return
       type(geometry_t) :: geom
       class(equation_t) :: mixture_eqn
       integer :: p,e,f,enb,lf,idx,lfnb
-      real :: r
+      real :: r,alpha_ip
 
       select type(mixture_eqn)
         type is(uvwp_t)
@@ -297,9 +297,15 @@ return
           enddo
 
           do f=1,geom%nf
+            call get_idx(geom%mg%fine_lvl%s2g(f),0,e,lf)
+            idx=geom%ef2nb_idx(e)+lf-1
+            call get_idx(geom%ef2nb(idx,1),0,enb,lfnb)
+
             mixture_eqn%mip(f)=0.
+            !mixture_eqn%mip(f)=mixture_eqn%mip(f)+phase(GAS)%uvwp%mip(f)
             do p=1,NPHASES
-              mixture_eqn%mip(f)=mixture_eqn%mip(f)+phase(p)%vfr%mfr(e)*phase(GAS)%uvwp%mip(f)
+              alpha_ip=(phase(p)%vfr%phi(e)+phase(p)%vfr%phi(enb))/2.
+              mixture_eqn%mip(f)=mixture_eqn%mip(f)+phase(p)%uvwp%mip(f)*alpha_ip
             enddo
           end do
         class default
@@ -312,5 +318,38 @@ return
       end select
 
     end subroutine
+
+    subroutine calc_partial_pressure(phase,geom)
+      type(phase_t) :: phase
+      type(geometry_t) :: geom
+      integer :: e,c
+
+      do e=1,geom%ne
+        do c=1,NCOMPONENTS
+          if(phase%COMPONENT_SET(c)) then
+            phase%component(c)%mfr%p_partial(e)=phase%uvwp%p(e)*phase%component(c)%mfr%vfr(e)
+          end if
+        end do
+      end do
+
+    end subroutine
+! make sure vfrs are correct and in bound
+  subroutine rescale_vfr(phase,ne)
+    integer :: ne
+    type(phase_t) :: phase(0:NPHASES)
+    integer :: e,p
+    real :: sumvfr
+
+    do e=1,ne
+      sumvfr=0.
+      do p=1,NPHASES
+        phase(p)%vfr%phi(e)=max(phase(p)%vfr%phi(e),phase(p)%vfr%vfr_bg)
+        sumvfr=sumvfr+phase(p)%vfr%phi(e)
+      end do
+      do p=1,NPHASES
+        phase(p)%vfr%phi(e)=phase(p)%vfr%phi(e)/sumvfr
+      end do
+    enddo
+  end subroutine
 
 end module mod_multiphase

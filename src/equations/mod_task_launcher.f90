@@ -102,7 +102,7 @@ contains
 !        call eqn%bcs(m)%coef(geom,eqn,prop)
 !      enddo
 
-      call calc_coef_p(eqn,ap,anb,b,geom,prop)
+      call calc_coef_p(eqn,ap,anb,b,geom,prop,dt)
 
       call set_a_0(phic,geom%ne+geom%nbf)
       call solve_gs('pc',phic,ap,anb,b,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
@@ -119,11 +119,14 @@ contains
     phys%phase(GAS)%uvwp%p=phys%phase(MIXTURE)%uvwp%p
     phys%phase(GAS)%uvwp%gp=phys%phase(MIXTURE)%uvwp%gp
     call update_mip(phys%phase(GAS)%uvwp,phys%phase(GAS)%prop,geom,phys%phic)
+!    call update_uvw(phys%phase(GAS)%uvwp,phys%phase(GAS)%prop,geom,phys%phic,phys%phase(MIXTURE)%uvwp%gpc)
+
     phys%phase(LIQUID)%uvwp%p=phys%phase(MIXTURE)%uvwp%p
     phys%phase(LIQUID)%uvwp%gp=phys%phase(MIXTURE)%uvwp%gp
     call update_mip(phys%phase(LIQUID)%uvwp,phys%phase(LIQUID)%prop,geom,phys%phic)
+!    call update_uvw(phys%phase(LIQUID)%uvwp,phys%phase(LIQUID)%prop,geom,phys%phic,phys%phase(MIXTURE)%uvwp%gpc)
     ! calculate partial pressure
-    ! call calc_pvap
+    call calc_partial_pressure(phys%phase(GAS),geom)
   end subroutine
 
   subroutine solve_energy(phys,geom)
@@ -200,8 +203,6 @@ contains
 
         call solve_gs(eqn%name,eqn%phi,ap,anb,b,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
 
-        call rescale_vfr(eqn%phi,geom%ne)
-
       elseif(n==LIQUID) then
 
         call calc_algebraic_vfr(phys%phase,n,geom%ne)
@@ -209,6 +210,8 @@ contains
       endif
       end associate
     enddo
+
+    call rescale_vfr(phys%phase,geom%ne)
 
     call calc_phase_mfr(phys%phase,geom)
 
@@ -331,9 +334,9 @@ contains
 
 
     call update_mixture_properties(phys%phase,geom%ne)
-    associate(prop=>phys%phase(GAS)%prop)
-      call calc_pvap(prop%pvap,prop%pvap_coef,phys%phase(GAS)%energy%t,ne)
-    end associate
+
+    call calc_pvap(phys%phase(GAS)%prop%pvap,phys%phase(GAS)%prop%pvap_coef,phys%phase(GAS)%energy%t,geom%ne)
+    call calc_pvap(phys%phase(LIQUID)%prop%pvap,phys%phase(LIQUID)%prop%pvap_coef,phys%phase(LIQUID)%energy%t,geom%ne)
     return
 
     ne=geom%ne

@@ -841,6 +841,19 @@ contains
        endif
 !
        end function sgn
+
+       real function rsgn(x)
+       implicit none
+       real :: x
+!
+       rsgn = 0.
+       if (x>=0.) then
+         rsgn=1.
+       else if (x<0.) then
+         rsgn=-1.
+       endif
+!
+       end function rsgn
 !
 ! calc_transform
 !

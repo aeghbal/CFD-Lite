@@ -121,20 +121,21 @@ contains
         dr = rpnb-rp
         call vec_weight(wt,rip,rp,rpnb)
 
+        alpha_ip=(1.-wt)*alpha(e)+wt*alpha(enb)
         ! advection term
         ! inward flux
-        f=-fg_sgn*eqn%mip(fg)
+        f=-fg_sgn*eqn%mip(fg)*alpha_ip
         ! upwind bias
         fnb=max(f,0.)
 
         ! diffusion term
         tci=(1.-wt)*prop%tc(e)+wt*prop%tc(enb)
         cpi=(1.-wt)*prop%cp(e)+wt*prop%cp(enb)
-        alpha_ip=(1.-wt)*alpha(e)+wt*alpha(enb)
+
         d=tci/cpi/dot_product(dr,norm)*area*alpha_ip
         ghi=(1.-wt)*eqn%grad(3*e-2:3*e)+wt*eqn%grad(3*enb-2:3*enb)
         gti=(1.-wt)*eqn%gt(3*e-2:3*e)+wt*eqn%gt(3*enb-2:3*enb)
-        sumdefc=sumdefc+tci*area*(dot_product(gti,norm)-dot_product(ghi,norm)/cpi)
+        sumdefc=sumdefc+tci*area*(dot_product(gti,norm)-dot_product(ghi,norm)/cpi)*alpha_ip
 
         anb(idx)=d+fnb
         ap(e)=ap(e)+d+fnb
