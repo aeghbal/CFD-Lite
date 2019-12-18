@@ -24,15 +24,15 @@ dep_map = {}
 name_map = {} # short name --> full path
 name_map_inv = {} # full path --> short name
 
-fcompiler = 'gfortran'#'mpif90 -f90=pgf90 '
-ccompiler = 'gcc'
-#fcompiler = 'pgfortran'
-#ccompiler = 'pgcc'
+#fcompiler = 'gfortran'#'mpif90 -f90=pgf90 '
+#ccompiler = 'gcc'
+fcompiler = 'pgfortran'
+ccompiler = 'pgcc'
 #fcompiler ='/fast-nas/apps/pgi-17.4/linux86-64/17.4/bin/pgfortran'
 #ccompiler= '/fast-nas/apps/pgi-17.4/linux86-64/17.4/bin/pgcc'
 
-cflags = ' -c -g  -fdefault-real-8 -ffree-line-length-512 -cpp' # gnu
-#cflags = ' -c -g -r8 '# pgi
+#cflags = ' -c -g  -fdefault-real-8 -ffree-line-length-512 -cpp' # gnu
+cflags = ' -c -g -r8 -Mpreprocess'# pgi
 
 cwd = os.getcwd()
 #preprocessDir = cwd + '/src/util'
