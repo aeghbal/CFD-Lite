@@ -204,7 +204,7 @@ module mod_mg_lvl
                 allocate(this%g2gf(this%lvl_max)%p(this%last_lvl%ng))
                 this%g2gf(this%lvl_max)%p=tvec(1:this%last_lvl%ng)
 
-                tvec(1:this%ng_tmp)=this%g2gf(this%lvl_max)%idx(1:this%ng_tmp+1)
+                tvec(1:this%ng_tmp+1)=this%g2gf(this%lvl_max)%idx(1:this%ng_tmp+1)
                 deallocate(this%g2gf(this%lvl_max)%idx);nullify(this%g2gf(this%lvl_max)%idx)
                 allocate(this%g2gf(this%lvl_max)%idx(this%ng_tmp+1))
                 this%g2gf(this%lvl_max)%idx=tvec(1:this%ng_tmp+1)
