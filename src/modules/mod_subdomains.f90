@@ -5,7 +5,7 @@ module mod_subdomains
   use cudafor
 !$endif
   implicit none
-  integer :: CPU=1,GPU=2
+  integer, parameter :: CPU=1,GPU=2
 
   type :: subdomain_t
     integer :: id
@@ -14,7 +14,7 @@ module mod_subdomains
     real, allocatable, dimension(:) :: ap,anb,b,phic
     integer :: ARCH=CPU
 !$ifdef CUDA
-    real, device, allocatable, dimension(:) :: ap_d,anb_d,b_d,phic_d,res_d
+    real, device, allocatable, dimension(:) :: ap_d,anb_d,b_d,phic_d,phic0_d,res_d
     integer, device, allocatable :: ef2nb_d(:),ef2nb_idx_d(:)
     integer :: device_num,stream=0
 !$endif

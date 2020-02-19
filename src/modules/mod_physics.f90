@@ -50,10 +50,11 @@ module mod_physics
   end subroutine
 
   subroutine construct_physics(phys,geom)
+    use mod_solver_cuda
     implicit none
     type(phys_t) :: phys
     type(geometry_t) :: geom
-    integer :: length
+    integer :: length,c
 
     allocate(phys%ap(geom%ne));phys%ap=0.
     allocate(phys%b(geom%ne));phys%b=0.
@@ -63,7 +64,14 @@ module mod_physics
     allocate(phys%phic(length));phys%phic=0.
     phys%nintf_c2b=geom%mg%nintf_c2b
 ! construct subdomains
-    if(phys%n_subdomains>1) call construct_subdomains(phys%subdomain,phys%n_subdomains,phys%intf,geom)
+    if(phys%n_subdomains>1) then
+      call construct_subdomains(phys%subdomain,phys%n_subdomains,phys%intf,geom)
+!$ifdef CUDA
+      do c=1,phys%n_subdomains
+        call allocate_device_data(phys%subdomain(c))
+      enddo
+!$endif
+    endif
 
 ! initialize properties
     call init_properties(phys%prop,0,geom%ne)

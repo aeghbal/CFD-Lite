@@ -135,7 +135,15 @@ module mod_solver
     real :: res,res_max,res_i_tot,res_max_tot,res_f_tot,res_target
 
     ! assemble subdomain coef
+!$omp single
     call assemble_coef(subdomain,geom,ap,anb,b,phi,nsubd)
+!$omp endsingle
+
+!$omp do
+    do c=1,nsubd
+      if(subdomain(c)%ARCH==GPU) call initiate_device_data(subdomain(c))
+    enddo
+!$omp enddo
 
     ! solve
     res_i_tot=0.
@@ -170,8 +178,13 @@ module mod_solver
       ! smooth each subdomain solution 2 iterations
 !$omp do
       do c=1,nsubd
-        call smoother_gs(cname,subdomain(c)%phic,subdomain(c)%ap,subdomain(c)%anb,subdomain(c)%b,subdomain(c)%ef2nb_idx,subdomain(c)%ef2nb,&
+        if(subdomain(c)%ARCH==CPU) then
+          call smoother_gs(cname,subdomain(c)%phic,subdomain(c)%ap,subdomain(c)%anb,subdomain(c)%b,subdomain(c)%ef2nb_idx,subdomain(c)%ef2nb,&
                          subdomain(c)%ne,subdomain(c)%nf,subdomain(c)%nbf,2)
+        elseif(subdomain(c)%ARCH==GPU) then
+          call smoother_jacobi_gpu(subdomain(c))
+          call copy_d2h(subdomain(c))
+        endif
       end do
 !$omp enddo
 
@@ -184,12 +197,22 @@ module mod_solver
         end do
       end do
 !$omp enddo
+
+!$omp do
+      do i=1,nsubd
+        if(subdomain(c)%ARCH==GPU) call copy_h2d(subdomain(c))
+      end do
+!$omp enddo
       ! calculate residuals every 10 iteration
       if(mod(it,10)==0) then
 !$omp do
         do c=1,nsubd
-          call calc_residual(subdomain(c)%phic,subdomain(c)%ap,subdomain(c)%anb,subdomain(c)%b,subdomain(c)%ef2nb_idx,subdomain(c)%ef2nb,&
+          if(subdomain(c)%ARCH==CPU) then
+            call calc_residual(subdomain(c)%phic,subdomain(c)%ap,subdomain(c)%anb,subdomain(c)%b,subdomain(c)%ef2nb_idx,subdomain(c)%ef2nb,&
                          subdomain(c)%ne,subdomain(c)%nf,subdomain(c)%nbf,res,res_max)
+          elseif(subdomain(c)%ARCH==GPU) then
+            call calc_residual_gpu(subdomain(c),res,res_max)
+          end if
 !$omp critical
           res_f_tot=res_f_tot+res**2
           res_max_tot=max(res_max_tot,res_max)
