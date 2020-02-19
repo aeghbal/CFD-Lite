@@ -24,33 +24,35 @@ dep_map = {}
 name_map = {} # short name --> full path
 name_map_inv = {} # full path --> short name
 
-#fcompiler = 'gfortran'#'mpif90 -f90=pgf90 '
-#ccompiler = 'gcc'
-fcompiler = 'pgfortran'
-ccompiler = 'pgcc'
-#fcompiler ='/fast-nas/apps/pgi-17.4/linux86-64/17.4/bin/pgfortran'
-#ccompiler= '/fast-nas/apps/pgi-17.4/linux86-64/17.4/bin/pgcc'
-
-#cflags = ' -c -g  -fdefault-real-8 -ffree-line-length-512 -cpp' # gnu
-cflags = ' -c -g -r8 -Mpreprocess'# pgi
-
-cwd = os.getcwd()
-#preprocessDir = cwd + '/src/util'
-
 hdf5='/opt/hdf5'
 cgns='/opt/cgnslib_3.2.1_modified'
 fftw='/opt/fftw-3.3.4'
 sqlite='/opt/sqlite'
-cuda='8.0'
-cc='cc35'
-server='Rock'
-
 xml2 = '/opt/libxml2-2.9.2'
+
+if False:
+  # GNU compiler options
+  os.system('scl enable devtoolset-7 bash')
+  fcompiler = 'gfortran'#'mpif90 -f90=pgf90 '
+  ccompiler = 'gcc'
+  cflags = ' -c -g  -fdefault-real-8 -ffree-line-length-512 -cpp' # gnu
+  links= '-ldl -L '+hdf5+'/lib -lhdf5 -L '+cgns+'/lib -lcgns -L '+fftw+'/lib -lfftw3f'# -L'+sqlite+'/lib -lsqlite3 -L '+
+else:
+  # PGI compiler options
+  fcompiler = 'pgfortran'
+  ccompiler = 'pgcc'
+  #fcompiler ='/fast-nas/apps/pgi-17.4/linux86-64/17.4/bin/pgfortran'
+  #ccompiler= '/fast-nas/apps/pgi-17.4/linux86-64/17.4/bin/pgcc'
+  cflags = ' -c -g -r8 -Mpreprocess -mp=allcore -Mcuda=8.0 -Mmpi=mpich -DCUDA'#  -Mcuda=cc35 pgi
+  links= '-ldl -L '+hdf5+'/lib -lhdf5 -L '+cgns+'/lib -lcgns -L '+fftw+'/lib -lfftw3f -Mcuda=8.0 -DCUDA'# -L'+sqlite+'/lib -lsqlite3 -L '+
+
+cwd = os.getcwd()
+#preprocessDir = cwd + '/src/util'
 
 build_cmd = 'cd ..'
 os.system(build_cmd)
 
-links= '-ldl -L '+hdf5+'/lib -lhdf5 -L '+cgns+'/lib -lcgns -L '+fftw+'/lib -lfftw3f'# -L'+sqlite+'/lib -lsqlite3 -L '+
+
 # default line length limit 132. this can be increased using -ffree-line-length-<n>
 includes = '-I '+cgns+'/include'# -I '+fftw+'/include -I '+sqlite+'/include -I '+ preprocessDir +' -I '+partitioner+'/include '
 

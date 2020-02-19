@@ -121,7 +121,8 @@ module mod_solver
 
   end subroutine
 
-  subroutine multi_subdomain_solver(cname,subdomain,intf,geom,ap,anb,b,phi,nsubd,nit)
+  subroutine multi_subdomain_solver(cname,subdomain,intf,geom,ap,anb,b,phi,nsubd,nit,res_i_tot,res_f_tot,res_max_tot)
+    use mod_solver_cuda
     implicit none
     integer :: nit,nsubd
     character(len=*) :: cname
@@ -141,50 +142,73 @@ module mod_solver
     res_f_tot=0.
     res_max_tot=0.
     ! calculate initial residual
+!$omp do
     do c=1,nsubd
-      call calc_residual(subdomain(c)%phic,subdomain(c)%ap,subdomain(c)%anb,subdomain(c)%b,subdomain(c)%ef2nb_idx,subdomain(c)%ef2nb,&
+      if(subdomain(c)%ARCH==CPU) then
+        call calc_residual(subdomain(c)%phic,subdomain(c)%ap,subdomain(c)%anb,subdomain(c)%b,subdomain(c)%ef2nb_idx,subdomain(c)%ef2nb,&
                          subdomain(c)%ne,subdomain(c)%nf,subdomain(c)%nbf,res,res_max)
+      elseif(subdomain(c)%ARCH==GPU) then
+        call calc_residual_gpu(subdomain(c),res,res_max)
+      end if
+!$omp critical
       res_i_tot=res_i_tot+res**2
       res_max_tot=max(res_max_tot,res_max)
+!$omp end critical
     end do
-    res_i_tot=sqrt(res_i_tot/nsubd)
+!$omp enddo
 
+!$omp single
+    res_i_tot=sqrt(res_i_tot/nsubd)
     ! loop until convergence criteria is fulfilled
-    it=0
     res_f_tot=res_i_tot
+!$omp end single
+
+    it = 0
     res_target=res_i_tot/10.! reduce residual 1 order of magnitude
     if(cname(1:2)=='pc') res_target=res_i_tot/10.
     do while(it<nit .and. res_f_tot>res_target)
       ! smooth each subdomain solution 2 iterations
+!$omp do
       do c=1,nsubd
         call smoother_gs(cname,subdomain(c)%phic,subdomain(c)%ap,subdomain(c)%anb,subdomain(c)%b,subdomain(c)%ef2nb_idx,subdomain(c)%ef2nb,&
                          subdomain(c)%ne,subdomain(c)%nf,subdomain(c)%nbf,2)
       end do
+!$omp enddo
+
       it=it+2
       ! update interface halos
+!$omp do
       do i=1,nsubd
         do j=i+1,nsubd
           call update_halos(intf(i,j),subdomain(i),subdomain(j),geom)
         end do
       end do
+!$omp enddo
       ! calculate residuals every 10 iteration
       if(mod(it,10)==0) then
+!$omp do
         do c=1,nsubd
           call calc_residual(subdomain(c)%phic,subdomain(c)%ap,subdomain(c)%anb,subdomain(c)%b,subdomain(c)%ef2nb_idx,subdomain(c)%ef2nb,&
                          subdomain(c)%ne,subdomain(c)%nf,subdomain(c)%nbf,res,res_max)
+!$omp critical
           res_f_tot=res_f_tot+res**2
           res_max_tot=max(res_max_tot,res_max)
+!$omp end critical
         end do
+!$omp enddo
+!$omp single
         res_f_tot=sqrt(res_f_tot/nsubd)
+!$omp end single
       endif
 
     end do
 
+!$omp single
     name=trim(cname)
     write(*,oformat) name,it,res_i_tot,res_f_tot,res_max_tot
-
     ! update main domain phi
     call update_phi(subdomain,phi,geom,nsubd)
+!$omp endsingle
 
   end subroutine
 
@@ -327,6 +351,7 @@ module mod_solver
   end subroutine
 
   subroutine solve(cname,subdomain,intf,geom,ap,anb,b,phi,nsubd,nit)
+    use omp_lib
     implicit none
     integer :: nit,nsubd
     character(len=*) :: cname
@@ -334,11 +359,14 @@ module mod_solver
     type(geometry_t) :: geom
     type(subdomain_t) :: subdomain(nsubd)
     type(intf_t) :: intf(nsubd,nsubd)
+    real :: res_i,res_f,res_max
 
     if(nsubd==1) then
       call solve_gs(cname,phi,ap,anb,b,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
     else
-      call multi_subdomain_solver(cname,subdomain,intf,geom,ap,anb,b,phi,nsubd,nit)
+!$omp parallel num_threads(nsubd) shared(cname,subdomain,intf,geom,ap,anb,b,phi,nsubd,nit,res_i,res_f,res_max) default(private)
+      call multi_subdomain_solver(cname,subdomain,intf,geom,ap,anb,b,phi,nsubd,nit,res_i,res_f,res_max)
+!$omp endparallel
     end if
 
   end subroutine

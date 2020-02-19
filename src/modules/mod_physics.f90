@@ -13,7 +13,7 @@ module mod_physics
   type :: phys_t
     ! temporal properties
     real :: dt=0.01
-    integer :: ntstep=10
+    integer :: ntstep=1000
     integer :: ncoef=3
     integer :: nit=100
     integer :: n_subdomains=4

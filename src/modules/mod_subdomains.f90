@@ -1,13 +1,23 @@
 module mod_subdomains
   use mod_cell
   use mod_util
+!$ifdef CUDA
+  use cudafor
+!$endif
   implicit none
+  integer :: CPU=1,GPU=2
 
   type :: subdomain_t
     integer :: id
     integer :: ne,nf,nbf
     integer, allocatable :: ef2nb(:),ef2nb_idx(:)
     real, allocatable, dimension(:) :: ap,anb,b,phic
+    integer :: ARCH=CPU
+!$ifdef CUDA
+    real, device, allocatable, dimension(:) :: ap_d,anb_d,b_d,phic_d,res_d
+    integer, device, allocatable :: ef2nb_d(:),ef2nb_idx_d(:)
+    integer :: device_num,stream=0
+!$endif
   end type
   type :: intf_t
     integer :: c1,c2
@@ -30,7 +40,7 @@ module mod_subdomains
     allocate(intf_tmp(n_subdomains,n_subdomains))
 
     associate(g2gf=>geom%mg%g2gf(1)%p,g2gf_idx=>geom%mg%g2gf(1)%idx,gf2g=>geom%mg%gf2g(1)%p)
-
+!$omp do
     do c=1,n_subdomains
       subdomain(c)%ne=g2gf_idx(c+1)-g2gf_idx(c)
       ne=subdomain(c)%ne
@@ -77,14 +87,16 @@ module mod_subdomains
         if(c/=cnb) allocate(intf_tmp(c,cnb)%index1(ncs))
       end do
     enddo
-
+!$omp enddo
+!$omp do
     do c=1,n_subdomains
       do cnb=1,n_subdomains
         if(c/=cnb) intf(c,cnb)%index2=>intf(cnb,c)%index1
         intf(c,cnb)%ncs=0! ncs is going to be used as a counter next and original ncs is going to be recovered at the end
       end do
     end do
-
+!$omp enddo
+!$omp do
     do c=1,n_subdomains
       ! fill the connectivity info now
       nbf=0
@@ -112,7 +124,8 @@ module mod_subdomains
         enddo
       enddo
     enddo
-
+!$omp enddo
+!$omp do
     do c=1,n_subdomains
       do n=g2gf_idx(c),g2gf_idx(c+1)-1
         g=n-g2gf_idx(c)+1
@@ -145,7 +158,9 @@ module mod_subdomains
         end do
       end do
     end do
+!$omp enddo
     ! align the index1 and index2 using intf_tmp reference
+!$omp do
     do c=1,n_subdomains
       do cnb=1,n_subdomains
         if(c==cnb) cycle
@@ -154,6 +169,7 @@ module mod_subdomains
         deallocate(intf_tmp(c,cnb)%index1)
       end do
     end do
+!$omp enddo
     deallocate(intf_tmp)
 
     end associate
