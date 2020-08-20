@@ -77,6 +77,14 @@ contains
     bcp=>eqn%make_bc(geom,'north');bcp%coef=>dirichlet0
     bcp=>eqn%make_bc(geom,'bottom');bcp%coef=>dirichlet0
 
+!    bcp=>eqn%make_bc(geom,'top');bcp%coef=>dirichlet0
+!    bcp=>eqn%make_bc(geom,'west');bcp%coef=>inlet!dirichlet0
+!    bcp=>eqn%make_bc(geom,'east');bcp%coef=>outlet!dirichlet0
+!    bcp=>eqn%make_bc(geom,'south');bcp%coef=>dirichlet0
+!    bcp=>eqn%make_bc(geom,'north');bcp%coef=>dirichlet0
+!    bcp=>eqn%make_bc(geom,'bottom');bcp%coef=>dirichlet0
+
+
     !init mip
     call calc_mip(eqn,prop,geom,.false.,dt)
     eqn%mip0=eqn%mip
@@ -119,9 +127,9 @@ contains
     call calc_grad(eqn%v,eqn%gv,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
     call calc_grad(eqn%w,eqn%gw,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
    ! Rhie Chow
-    call calc_mip(eqn,prop,geom,.true.,dt)
+    call calc_mip(eqn,prop,geom,.true.,dt) !mass-integration point co-located method
 
-    call calc_coef_p(eqn,ap,anb,b,geom,prop)
+    call calc_coef_p(eqn,ap,anb,b,geom,prop) ! PC Correction co-effs
 
     call set_a_0(phic,geom%ne+geom%nbf)
     call solve('pc',subdomain,intf,geom,ap,anb,b,phic,nsubd,nit)
@@ -130,6 +138,7 @@ contains
     call adjust_pc(phic,pref,geom)
     call calc_grad(phic,eqn%gpc,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
     call update_uvwp(eqn,prop,geom,phic,geom%ne,geom%nf,geom%nbf)
+    !call prefetch_gpu2cpu(subdomain,nsubd)
 
   end subroutine
 
@@ -149,9 +158,9 @@ contains
       if(.false.) then! first order extrapolation
         dr = [geom%xc(enb)-geom%xc(e),geom%yc(enb)-geom%yc(e),geom%zc(enb)-geom%zc(e)]
         call internal_extrapolation_grad(pc,e,grad,geom%xc,geom%yc,geom%zc,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf)
-        pc(enb)=pc(e)-dot_product(grad,dr)
+        pc(enb)=pc(e)-dot_product(grad,dr) !Taylor Expansion
       else! zeroth order extrapolation
-        pc(enb)=pc(e)
+        pc(enb)=pc(e) !For ghost elements
       endif
     end do
 
@@ -331,7 +340,7 @@ contains
 
           ! diffusion term
           rhoip=(1.-wt)*prop%rho(e)+wt*prop%rho(enb)
-          d=((1.-wt)*eqn%dc(e)+wt*eqn%dc(enb))/dot_product(dr,norm)*rhoip*area
+          d=((1.-wt)*eqn%dc(e)+wt*eqn%dc(enb))/dot_product(dr,norm)*rhoip*area !Diffu coeff.
         endif
 
         anb(idx)=d
@@ -580,9 +589,9 @@ contains
       select type(eqn)
       type is(uvwp_t)
         do e=bc%esec(1),bc%esec(2)
-          eqn%u(e)=0.
+          eqn%u(e)=10. !0.
           eqn%v(e)=0.
-          eqn%w(e)=-1.
+          eqn%w(e)=0.!-1.
         end do
       end select
 
@@ -605,5 +614,26 @@ contains
 
     end subroutine
 
+!subroutine prefetch_gpu2cpu(subdomain,nsubd)
+!    use mod_subdomains
+!    use cudafor
+!    implicit none
+!
+!    type(subdomain_t) :: subdomain(nsubd)
+!    integer :: c,nsubd,istat
+!
+!
+!
+!do c=1, nsubd
+!
+!
+!
+!    istat = cudaMemPrefetchAsync(subdomain(c)%phic, subdomain(c)%ne+subdomain(c)%nbf, cudaCpuDeviceId, subdomain(c)%stream)
+!    print *, istat
+!    istat = cudaMemPrefetchAsync(subdomain(c)%phic0,subdomain(c)%ne+subdomain(c)%nbf, cudaCpuDeviceId, 0)
+!    istat = cudaDeviceSynchronize()
+!enddo
+!
+!  end subroutine
 
 end module

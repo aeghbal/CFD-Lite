@@ -24,10 +24,10 @@ dep_map = {}
 name_map = {} # short name --> full path
 name_map_inv = {} # full path --> short name
 
-hdf5='/opt/hdf5'
-cgns='/opt/cgnslib_3.2.1_modified'
-fftw='/opt/fftw-3.3.4'
-sqlite='/opt/sqlite'
+hdf5='/opt/software/hdf5'
+cgns='/opt/software/cgnslib_3.2.1_modified'
+fftw='/opt/software/fftw-3.3.4'
+sqlite='/opt/software/sqlite'
 xml2 = '/opt/libxml2-2.9.2'
 
 if False:
@@ -39,12 +39,14 @@ if False:
   links= '-ldl -L '+hdf5+'/lib -lhdf5 -L '+cgns+'/lib -lcgns -L '+fftw+'/lib -lfftw3f'# -L'+sqlite+'/lib -lsqlite3 -L '+
 else:
   # PGI compiler options
-  fcompiler = 'pgfortran'
+  fcompiler = 'pgfortran CUDA_HOME=/usr/local/cuda-10.0'
   ccompiler = 'pgcc'
   #fcompiler ='/fast-nas/apps/pgi-17.4/linux86-64/17.4/bin/pgfortran'
   #ccompiler= '/fast-nas/apps/pgi-17.4/linux86-64/17.4/bin/pgcc'
-  cflags = ' -c -g -r8 -Mpreprocess -mp=allcore -Mcuda=8.0 -Mmpi=mpich -DCUDA'#  -Mcuda=cc35 pgi
-  links= '-ldl -L '+hdf5+'/lib -lhdf5 -L '+cgns+'/lib -lcgns -L '+fftw+'/lib -lfftw3f -Mcuda=8.0 -DCUDA'# -L'+sqlite+'/lib -lsqlite3 -L '+
+  cflags = ' -c -g -r8 -Mpreprocess -mp=allcore -Mcuda -Mmpi=mpich -DCUDA -tp haswell -cpp'#  -Mcuda=cc35 pgi
+  #cflags = ' -c -g -r8 -Mpreprocess -mp=allcore -Mmpi=mpich -tp haswell'#  -Mcuda=cc35 pgi
+  links= '-ldl -L '+hdf5+'/lib -lhdf5 -L '+cgns+'/lib -lcgns -L '+fftw+'/lib -lfftw3f -Mcuda -DCUDA'# -L'+sqlite+'/lib -lsqlite3 -L '+
+  #links= '-ldl -L '+hdf5+'/lib -lhdf5 -L '+cgns+'/lib -lcgns -L '+fftw+'/lib -lfftw3f '# -L'+sqlite+'/lib -lsqlite3 -L '+
 
 cwd = os.getcwd()
 #preprocessDir = cwd + '/src/util'

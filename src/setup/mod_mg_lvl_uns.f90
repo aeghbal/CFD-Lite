@@ -55,6 +55,10 @@ module mod_mg_lvl
         type(mg_lvl_t) :: mg
         integer, pointer :: ef2nb_idx(:)=>null()
         integer, pointer :: ef2nb(:,:)=>null()
+        real :: telap=0.
+!        real,managed, allocatable, dimension(:) :: phic0_d,r_d,ap,b,anb,phic
+!        real,allocatable, managed :: res_d(:), res_max_d(:)
+!        integer, managed, allocatable :: ef2nb_d(:),ef2nb_idx_d(:)
       end type
 
     contains

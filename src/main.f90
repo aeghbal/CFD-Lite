@@ -14,11 +14,17 @@ program cfdlite
   type(phys_t) :: phys
   integer :: tstep,icoef,it
   real :: residual_rms_i,residual_rms_f,residual_max
+  real :: start,finish
+
 
 #ifdef Catalyst
     print*, "Catalyst Adaptor: Enabled"
 #elseif defined VTK
     Print*, "VTK Adaptor: Enabled"
+#endif
+
+#ifdef CUDA
+    print*, "CUDA Solver: Enabled"
 #endif
 
 ! this program takes only 1 argument which is the cgns file
@@ -31,6 +37,9 @@ program cfdlite
   if(i>0) projPath(1:i)=filename(1:i)
 
   write(*,*) 'Project path is :'//trim(projPath)
+
+    call cpu_time(start)
+
 ! construct the geometry that has only 1 data block and c2b interfaces as many as 2D sections of it
   call cell_input(geom,filename,phys%n_subdomains)
 !
@@ -44,6 +53,8 @@ program cfdlite
 						   phys%ntstep, phys%dt)
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #endif
+!allocation.deloc.
+!!$omp parallel num_threads(nsubd) shared(cname,subdomain,intf,geom,ap,anb,b,phi,nsubd,nit,res_i,res_f,res_max) default(private)
 
 !
   write(*,'(5x,A16,x,A5,x,A15,A9,3x,A9,3x,A9)') 'solve eqn       ','nit','residual(rms)','initial','final','max'
@@ -54,7 +65,6 @@ program cfdlite
       !do phys%iphase=1,NPHASES
         !call solve_scalar(phys%scalar,phys%prop,geom,phys%dt,phys%nit,phys%ap,phys%anb,phys%b,phys%phic)
         call solve_uvwp(phys%uvwp,phys%prop,geom,phys%dt,phys%nit,phys%ap,phys%anb,phys%b,phys%phic,phys%subdomain,phys%intf,phys%n_subdomains)
-
         !call solve_energy(phys%energy,phys%prop,geom,phys%dt,phys%nit,phys%ap,phys%anb,phys%b,phys%phic)
       !enddo
     end do
@@ -69,15 +79,15 @@ program cfdlite
 						   phys%ntstep, phys%dt)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #endif
-
 #ifdef VTK
 	if(mod(tstep,10)==0) then
-    	call vtk_data(phys%uvwp,phys%energy,geom,tstep)
+   ! 	call vtk_data(phys%uvwp,phys%energy,geom,tstep)
 	endif
 #else
-    if(mod(tstep,10)==0) then
-      call write_vtubin(phys%uvwp,geom,projPath,tstep)
-      call write_vtubin(phys%energy,geom,projPath,tstep)
+    if(mod(tstep,1)==0) then
+      !call prefetch_gpu2cpu(phys)
+     ! call write_vtubin(phys%uvwp,geom,projPath,tstep)
+     ! call write_vtubin(phys%energy,geom,projPath,tstep)
     endif
 #endif
 
@@ -86,7 +96,7 @@ program cfdlite
   end do
 
   !write_vtu
-  call write_vtubin(phys%uvwp,geom,projPath,tstep)
+  !call write_vtubin(phys%uvwp,geom,projPath,tstep-1)! changed from tstep to tstep-1
 
 #ifdef Catalyst
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -95,6 +105,11 @@ program cfdlite
 						   phys%ntstep, phys%dt)
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #endif
+
+
+    call cpu_time(finish)
+    print '("Time (total) = ",f10.3," seconds; Time (PC) = ",f10.3," seconds..")',finish-start,geom%telap
+
 
 
   !call destroy_scalar(phys%scalar)

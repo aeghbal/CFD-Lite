@@ -100,8 +100,9 @@ module mod_vtu_output
 
 ! Get output variable list
     select type(eqn)
+
       type is(uvwp_t)
-        nvarlist=6
+        nvarlist=7
         allocate(phi(nvarlist))
         allocate (varname(nvarlist))
         allocate (vardimension(nvarlist))
@@ -121,6 +122,14 @@ module mod_vtu_output
           enddo
         enddo
         phi(6)%p=>eqn%dc;varname(6)='mip';vardimension(6)=1
+!       !!!!!!!!SUBD!!!!!
+!        do c=1,nsubd
+!          do e=1,subdomain(c)%ne
+!            idx=geom%mg%g2gf(1)%idx(c)+e-1
+!            g=geom%mg%g2gf(1)%p(idx)
+!            phi(g) = subdomain(c)%phic(e)
+!          enddo
+!        enddo
       type is(energy_t)
         nvarlist=4
         allocate(phi(nvarlist))
