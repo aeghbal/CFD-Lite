@@ -8,6 +8,7 @@ module mod_subdomains
     integer :: ne,nf,nbf
     integer, allocatable :: ef2nb(:),ef2nb_idx(:)
     real, allocatable, dimension(:) :: ap,anb,b,phic
+    real, allocatable, dimension(:) :: phic0!!!! NEW SR
   end type
   type :: intf_t
     integer :: c1,c2
@@ -64,6 +65,8 @@ module mod_subdomains
       subdomain(c)%nf=nf
       allocate(subdomain(c)%anb(2*nf-nbf))
       allocate(subdomain(c)%phic(ne+nbf))
+            allocate(subdomain(c)%phic0(ne+nbf)) !!NEW
+
       allocate(subdomain(c)%ef2nb(2*nf-nbf))
       allocate(subdomain(c)%ef2nb_idx(ne+1))
 

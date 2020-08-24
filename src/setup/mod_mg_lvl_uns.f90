@@ -55,6 +55,7 @@ module mod_mg_lvl
         type(mg_lvl_t) :: mg
         integer, pointer :: ef2nb_idx(:)=>null()
         integer, pointer :: ef2nb(:,:)=>null()
+        real :: elapt =0. !!! NEW ADD SR
       end type
 
     contains

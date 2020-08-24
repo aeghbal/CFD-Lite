@@ -14,6 +14,7 @@ program cfdlite
   type(phys_t) :: phys
   integer :: tstep,icoef,it
   real :: residual_rms_i,residual_rms_f,residual_max
+  real :: start, finish
 
 #ifdef Catalyst
     print*, "Catalyst Adaptor: Enabled"
@@ -31,6 +32,7 @@ program cfdlite
   if(i>0) projPath(1:i)=filename(1:i)
 
   write(*,*) 'Project path is :'//trim(projPath)
+  call cpu_time(start)
 ! construct the geometry that has only 1 data block and c2b interfaces as many as 2D sections of it
   call cell_input(geom,filename,phys%n_subdomains)
 !
@@ -77,7 +79,7 @@ program cfdlite
 #else
     if(mod(tstep,10)==0) then
       call write_vtubin(phys%uvwp,geom,projPath,tstep)
-      call write_vtubin(phys%energy,geom,projPath,tstep)
+     ! call write_vtubin(phys%energy,geom,projPath,tstep)
     endif
 #endif
 
@@ -96,7 +98,8 @@ program cfdlite
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #endif
 
-
+ call cpu_time(finish)
+    print '("Time (total) = ",f10.5," seconds; Time (Pressure Correction Eqn) = ",f10.5," seconds.")',finish-start, geom%elapt
   !call destroy_scalar(phys%scalar)
   call destroy_phys(phys)
   call destroy_geom(geom)

@@ -131,10 +131,11 @@ module mod_solver
     type(intf_t) :: intf(nsubd,nsubd)
     integer :: c ,i,j,it
     character(len=32) :: name
-    real :: res,res_max,res_i_tot,res_max_tot,res_f_tot,res_target
+    real :: res,res_max,res_i_tot,res_max_tot,res_f_tot,res_target,starttt,endttt
 
     ! assemble subdomain coef
     call assemble_coef(subdomain,geom,ap,anb,b,phi,nsubd)
+    call cpu_time(starttt)
 
     ! solve
     res_i_tot=0.
@@ -154,13 +155,15 @@ module mod_solver
     res_f_tot=res_i_tot
     res_target=res_i_tot/10.! reduce residual 1 order of magnitude
     if(cname(1:2)=='pc') res_target=res_i_tot/10.
-    do while(it<nit .and. res_f_tot>res_target)
+    do while(it<nit)! .and. res_f_tot>res_target)
       ! smooth each subdomain solution 2 iterations
       do c=1,nsubd
-        call smoother_gs(cname,subdomain(c)%phic,subdomain(c)%ap,subdomain(c)%anb,subdomain(c)%b,subdomain(c)%ef2nb_idx,subdomain(c)%ef2nb,&
-                         subdomain(c)%ne,subdomain(c)%nf,subdomain(c)%nbf,2)
+!        call smoother_gs(cname,subdomain(c)%phic,subdomain(c)%ap,subdomain(c)%anb,subdomain(c)%b,subdomain(c)%ef2nb_idx,subdomain(c)%ef2nb,&
+!                         subdomain(c)%ne,subdomain(c)%nf,subdomain(c)%nbf,2)
+        call smoother_jacobi_cpu_debug(cname,subdomain(c)%phic,subdomain(c)%phic0,subdomain(c)%ap,subdomain(c)%anb,subdomain(c)%b,subdomain(c)%ef2nb_idx,subdomain(c)%ef2nb,&
+                                 subdomain(c)%ne,subdomain(c)%nf,subdomain(c)%nbf,1)
       end do
-      it=it+2
+      it=it+1
       ! update interface halos
       do i=1,nsubd
         do j=i+1,nsubd
@@ -179,7 +182,9 @@ module mod_solver
       endif
 
     end do
-
+    call cpu_time(endttt)
+        geom%elapt = geom%elapt + (endttt-starttt)
+     !   print *, 'Total Elap:', geom%elapt, 'Elap Here',(endttt-starttt)
     name=trim(cname)
     write(*,oformat) name,it,res_i_tot,res_f_tot,res_max_tot
 
@@ -329,6 +334,7 @@ module mod_solver
   subroutine solve(cname,subdomain,intf,geom,ap,anb,b,phi,nsubd,nit)
     implicit none
     integer :: nit,nsubd
+    real:: startt,endt
     character(len=*) :: cname
     real , dimension(*):: ap,anb,b,phi
     type(geometry_t) :: geom
@@ -336,10 +342,108 @@ module mod_solver
     type(intf_t) :: intf(nsubd,nsubd)
 
     if(nsubd==1) then
-      call solve_gs(cname,phi,ap,anb,b,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
+        call cpu_time(startt)
+       ! call solve_gs(cname,phi,ap,anb,b,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
+        call solve_jacobi_single_domain(cname,phi,ap,anb,b,geom%ef2nb_idx,geom%ef2nb,geom%ne,geom%nf,geom%nbf,nit)
+        call cpu_time(endt)
+        !print *, 'here'
+        geom%elapt = geom%elapt + (endt-startt)
+        !print *, 'Total Elap:', geom%elapt, 'Elap Here',(endt-startt)
     else
       call multi_subdomain_solver(cname,subdomain,intf,geom,ap,anb,b,phi,nsubd,nit)
     end if
 
   end subroutine
+
+
+  subroutine solve_jacobi_single_domain(cname,phi,ap,anb,b,ef2nb_idx,ef2nb,ne,nf,nbf,nit)
+    implicit none
+    character(len=*) :: cname
+    character(len=16) :: name
+    real, dimension(ne+nbf) :: phi,phi0
+    real, dimension(ne) :: ap,b
+    real, dimension(2*nf-nbf) :: anb
+    integer :: ef2nb_idx(ne+1),ef2nb(2*nf-nbf,2)
+    integer :: ne,nf,nbf,nit,it
+    integer :: e,idx,enb,lfnb
+    real :: sumnb,res_i,res_f,res_target,res_max,r
+    real :: sor
+
+    res_i=0.! initial residual
+    phi0 = phi
+
+    do e=1,ne
+      sumnb=b(e)
+      do idx=ef2nb_idx(e),ef2nb_idx(e+1)-1
+        call get_idx(ef2nb(idx,1),0,enb,lfnb)
+        sumnb=sumnb+anb(idx)*phi(enb)
+      end do
+      r=sumnb-ap(e)*phi(e)
+      res_i=res_i+r**2
+    end do
+    res_i=sqrt(res_i/ne)
+    res_f = res_i
+
+  it=0
+  res_f=res_i
+  res_target=res_i/10.! reduce residual 1 order of magnitude
+  if(cname(1:2)=='pc') res_target=res_i/10.
+  do while(it<nit)! .and. res_f>res_target)
+    it=it+1
+
+     do e=1,ne
+      sumnb=b(e)
+      do idx=ef2nb_idx(e),ef2nb_idx(e+1)-1
+        call get_idx(ef2nb(idx,1),0,enb,lfnb)
+        sumnb=sumnb+anb(idx)*phi0(enb)
+      end do
+      phi(e)=(sumnb)/ap(e)
+      enddo
+
+    if(mod(it,10)==0) then
+    res_max=0.
+    res_f=0.! final residual
+    do e=1,ne
+      sumnb=b(e)
+      do idx=ef2nb_idx(e),ef2nb_idx(e+1)-1
+        call get_idx(ef2nb(idx,1),0,enb,lfnb)
+        sumnb=sumnb+anb(idx)*phi(enb)
+      end do
+      r=abs(sumnb-ap(e)*phi(e))
+      res_max=max(r,res_max)
+      res_f=res_f+r**2
+    end do
+    res_f=sqrt(res_f/ne)
+    end if
+  enddo
+
+    name=trim(cname)
+    write(*,oformat) name,it,res_i,res_f,res_max
+
+  end subroutine
+
+  subroutine smoother_jacobi_cpu_debug(cname,phi,phi0,ap,anb,b,ef2nb_idx,ef2nb,ne,nf,nbf,nit)
+    implicit none
+    character(len=*) :: cname
+    real, dimension(ne+nbf) :: phi,phi0
+    real, dimension(ne) :: ap,b
+    real, dimension(2*nf-nbf) :: anb
+    integer :: ef2nb_idx(ne+1),ef2nb(2*nf-nbf,2)
+    integer :: ne,nf,nbf,nit,it
+    integer :: e,idx,enb,lfnb
+    real :: sumnb,sor
+
+
+
+    do e=1,ne
+      sumnb=b(e)
+      do idx=ef2nb_idx(e),ef2nb_idx(e+1)-1
+        call get_idx(ef2nb(idx,1),0,enb,lfnb)
+        sumnb=sumnb+anb(idx)*phi0(enb)
+      end do
+      phi(e)=(sumnb)/ap(e)
+      phi0(e)=phi(e)
+    end do
+end subroutine
+
 end module

@@ -13,10 +13,10 @@ module mod_physics
   type :: phys_t
     ! temporal properties
     real :: dt=0.01
-    integer :: ntstep=10
+    integer :: ntstep=100
     integer :: ncoef=3
     integer :: nit=100
-    integer :: n_subdomains=4
+    integer :: n_subdomains=1
     !
     integer :: nintf_c2b
     ! put equations to be solve here
@@ -61,6 +61,7 @@ module mod_physics
     allocate(phys%anb(length));phys%anb=0.
     length = geom%ne+geom%nbf
     allocate(phys%phic(length));phys%phic=0.
+!    allocate(phys%phic0(length));phys%phic0=0.
     phys%nintf_c2b=geom%mg%nintf_c2b
 ! construct subdomains
     if(phys%n_subdomains>1) call construct_subdomains(phys%subdomain,phys%n_subdomains,phys%intf,geom)
@@ -85,6 +86,7 @@ module mod_physics
         deallocate(phys%subdomain(c)%b)
         deallocate(phys%subdomain(c)%anb)
         deallocate(phys%subdomain(c)%phic)
+        deallocate(phys%subdomain(c)%phic0)
         deallocate(phys%subdomain(c)%ef2nb)
         deallocate(phys%subdomain(c)%ef2nb_idx)
         do cnb=1,phys%n_subdomains
